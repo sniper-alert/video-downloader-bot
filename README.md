@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![aiogram](https://img.shields.io/badge/aiogram-3.x-2ca5e0)
-![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-red)
+![yt-dlp](https://img.shields.io/pypi/v/yt-dlp?label=yt-dlp&color=red)
 ![Platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey)
 ![Release](https://img.shields.io/github/v/release/qvaraz/video-downloader-bot?color=green)
 
@@ -13,11 +13,11 @@ Telegram bot that downloads videos from YouTube, TikTok, Instagram, and Twitter/
 
 ## Features
 
-- Send a link — bot asks for quality (360p / 480p / 720p)
-- Powered by `yt-dlp` — reliable extraction from major platforms
+- Send a link - bot asks for quality (360p / 480p / 720p)
+- Powered by `yt-dlp` - reliable extraction from major platforms
 - Auto-cleanup: files deleted from disk right after sending
 - Streaming-friendly output (H.264 mp4, plays on all Telegram clients)
-- Max file size 49 MB — Telegram Bot API limit
+- Max file size 49 MB - Telegram Bot API limit
 - Async: downloads run in a thread pool, bot stays responsive
 - Inline keyboard for quality selection
 - Clean error messages instead of raw tracebacks
@@ -32,10 +32,10 @@ Telegram bot that downloads videos from YouTube, TikTok, Instagram, and Twitter/
 ## Stack
 
 - Python 3.8+
-- [aiogram 3.x](https://github.com/aiogram/aiogram) — async Telegram framework
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — video extraction
-- [FFmpeg](https://ffmpeg.org/download.html) — required for merging video + audio
-- `python-dotenv` — loads token from `.env`
+- [aiogram 3.x](https://github.com/aiogram/aiogram) - async Telegram framework
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - video extraction
+- [FFmpeg](https://ffmpeg.org/download.html) - required for merging video + audio
+- `python-dotenv` - loads token from `.env`
 
 ## Setup
 
@@ -61,6 +61,7 @@ Required for merging video and audio streams into a single mp4.
 - **Linux**: `sudo apt install ffmpeg`
 
 Verify:
+
 ```bash
 ffmpeg -version
 ```
@@ -71,7 +72,7 @@ ffmpeg -version
 2. Send `/newbot`.
 3. Enter a display name (e.g. `Video Downloader`).
 4. Enter a username ending with `bot` (e.g. `qvaraz_dl_bot`).
-5. Copy the token BotFather sends you — looks like `7123456789:AAHxxxxxxxxxxxxxxxxx`.
+5. Copy the token BotFather sends you - looks like `7123456789:AAHxxxxxxxxxxxxxxxxx`.
 
 ### 5. Configure
 
@@ -93,7 +94,7 @@ No quotes, no spaces around `=`.
 python bot.py
 ```
 
-Should print `bot starting` and `Start polling`. Leave the window open — bot runs while this process is alive.
+Should print `bot starting` and `Start polling`. Leave the window open - bot runs while this process is alive.
 
 ## Usage
 
@@ -105,29 +106,32 @@ Should print `bot starting` and `Start polling`. Leave the window open — bot r
 
 Commands:
 
-- `/start` — welcome message
-- `/help` — same as `/start`
-- `/cancel` — clear the pending link
+- `/start` - welcome message
+- `/help` - same as `/start`
+- `/cancel` - clear the pending link
 
 ## Project structure
 
 ```
 video-downloader-bot/
-├── bot.py             # aiogram handlers, dispatcher
-├── config.py          # env loading, paths
-├── downloader.py      # yt-dlp wrapper
-├── requirements.txt   # dependencies
-├── .env.example       # token template
+├── bot.py
+├── config.py
+├── downloader.py
+├── requirements.txt
+├── .env.example
 ├── .gitignore
 ├── LICENSE
-└── README.md
+├── README.md
+└── screenshots/
+    └── demo.png
 ```
 
 ## Notes
 
-- `.env` is ignored by git — never commit real tokens.
+- `.env` is ignored by git - never commit real tokens.
 - Max output quality is 720p by default to stay under Telegram's 50 MB upload limit. Raise `MAX_HEIGHT` in `downloader.py` if you need more, but most videos over 720p will exceed the limit.
 - If YouTube starts returning `Sign in to confirm you're not a bot`, update `yt-dlp`:
+
   ```bash
   pip install -U --pre yt-dlp
   ```
