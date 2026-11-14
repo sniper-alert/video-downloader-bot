@@ -64,14 +64,21 @@ def download_and_send(chat_id, url, processing_msg_id):
   output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
   os.makedirs("downloads", exist_ok=True)
 
-  # إعدادات مبسطة ومباشرة تدعم تيك توك ومنصات السوشيال ميديا بدون الحاجة لدمج معقد
+  # إعدادات متقدمة لتجاوز حظر تيك توك والمنصات الأخرى
   ydl_opts = {
-      "format": "best",  # اختيار أفضل صيغة جاهزة مباشرة دون دمج
+      "format": "best",
       "outtmpl": output_template,
       "max_filesize": 50 * 1024 * 1024,  # الحد الأقصى 50 ميجابايت لتوافق تيليجرام
       "nocheckcertificate": True,
       "ignoreerrors": False,
       "quiet": True,
+      # محاكاة متصفح حقيقي لتجنب حظر تيك توك
+      "http_headers": {
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          )
+      },
   }
 
   downloaded_file = None
