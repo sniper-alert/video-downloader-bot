@@ -64,9 +64,9 @@ def download_and_send(chat_id, url, processing_msg_id):
   output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
   os.makedirs("downloads", exist_ok=True)
 
-  # إعدادات yt-dlp المستقرة لتجنب مشاكل التحميل
+  # إعدادات مبسطة ومباشرة تدعم تيك توك ومنصات السوشيال ميديا بدون الحاجة لدمج معقد
   ydl_opts = {
-      "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+      "format": "best",  # اختيار أفضل صيغة جاهزة مباشرة دون دمج
       "outtmpl": output_template,
       "max_filesize": 50 * 1024 * 1024,  # الحد الأقصى 50 ميجابايت لتوافق تيليجرام
       "nocheckcertificate": True,
@@ -103,7 +103,7 @@ def download_and_send(chat_id, url, processing_msg_id):
 
   except Exception as e:
     print(f"Error details: {e}")
-    error_msg = "❌ حدث خطأ أثناء التحميل. قد يكون الرابط محظوراً، أو الفيديو كبيراً جداً، أو المنصة لا تدعم التحميل حالياً."
+    error_msg = f"❌ حدث خطأ أثناء التحميل: {str(e)[:100]}"
     try:
       bot.edit_message_text(
           error_msg, chat_id=chat_id, message_id=processing_msg_id
