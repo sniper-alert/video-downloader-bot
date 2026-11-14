@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 from flask import Flask
 import telebot
 import yt_dlp
@@ -118,11 +119,16 @@ def download_and_send(chat_id, url, processing_msg_id):
         print(f"Error removing file: {e}")
 
 
-# تشغيل سيرفر الـ Flask والبوت معاً
+# تشغيل سيرفر الـ Flask والبوت معاً بحلقة تشغيل آمنة
 if __name__ == "__main__":
   flask_thread = threading.Thread(target=run_flask)
   flask_thread.daemon = True
   flask_thread.start()
 
-  print("Bot is starting...")
-  bot.infinity_polling(skip_pending=True)
+  print("Bot is starting safely...")
+  while True:
+    try:
+      bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+    except Exception as e:
+      print(f"Polling error: {e}")
+      time.sleep(5)
