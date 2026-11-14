@@ -64,7 +64,7 @@ def download_and_send(chat_id, url, processing_msg_id):
   output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
   os.makedirs("downloads", exist_ok=True)
 
-  # إعدادات مخصصة لتجاوز حماية تيك توك على السيرفرات السحابية
+  # إعدادات متقدمة لتجاوز الحظر الجغرافي وحظر الـ IP
   ydl_opts = {
       "format": "best",
       "outtmpl": output_template,
@@ -72,26 +72,13 @@ def download_and_send(chat_id, url, processing_msg_id):
       "nocheckcertificate": True,
       "ignoreerrors": False,
       "quiet": True,
-      # خيارات حماية متقدمة لمحاكاة المتصفح وتجنب الحظر
-      "extractor_args": {
-          "tiktok": {
-              "api_hostname": [
-                  "api16-normal-c-useast1a.tiktokv.com",
-                  "api22-normal-c-useast1a.tiktokv.com",
-            ]
-          }
-      },
+      "geo_bypass": True,  # تجاوز الحظر الجغرافي
       "http_headers": {
           "User-Agent": (
-              "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
-              "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 "
-              "Mobile/15E148 Safari/604.1"
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
           ),
-          "Accept": (
-              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-          ),
-          "Accept-Language": "en-US,en;q=0.5",
-          "Sec-Fetch-Mode": "navigate",
+          "Accept-Language": "en-US,en;q=0.9",
       },
   }
 
@@ -124,7 +111,7 @@ def download_and_send(chat_id, url, processing_msg_id):
 
   except Exception as e:
     print(f"Error details: {e}")
-    error_msg = f"❌ حدث خطأ أثناء التحميل: {str(e)[:100]}"
+    error_msg = f"❌ تعذر التحميل بسبب قيود المنصة (حظر السيرفر): {str(e)[:80]}"
     try:
       bot.edit_message_text(
           error_msg, chat_id=chat_id, message_id=processing_msg_id
