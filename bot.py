@@ -64,20 +64,34 @@ def download_and_send(chat_id, url, processing_msg_id):
   output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
   os.makedirs("downloads", exist_ok=True)
 
-  # إعدادات متقدمة لتجاوز حظر تيك توك والمنصات الأخرى
+  # إعدادات مخصصة لتجاوز حماية تيك توك على السيرفرات السحابية
   ydl_opts = {
       "format": "best",
       "outtmpl": output_template,
-      "max_filesize": 50 * 1024 * 1024,  # الحد الأقصى 50 ميجابايت لتوافق تيليجرام
+      "max_filesize": 50 * 1024 * 1024,
       "nocheckcertificate": True,
       "ignoreerrors": False,
       "quiet": True,
-      # محاكاة متصفح حقيقي لتجنب حظر تيك توك
+      # خيارات حماية متقدمة لمحاكاة المتصفح وتجنب الحظر
+      "extractor_args": {
+          "tiktok": {
+              "api_hostname": [
+                  "api16-normal-c-useast1a.tiktokv.com",
+                  "api22-normal-c-useast1a.tiktokv.com",
+            ]
+          }
+      },
       "http_headers": {
           "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          )
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
+              "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 "
+              "Mobile/15E148 Safari/604.1"
+          ),
+          "Accept": (
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          ),
+          "Accept-Language": "en-US,en;q=0.5",
+          "Sec-Fetch-Mode": "navigate",
       },
   }
 
