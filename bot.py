@@ -11,6 +11,13 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
+# حذف الويب هوك القديم لمنع خطأ التعارض (Conflict 409)
+try:
+  bot.delete_webhook(drop_pending_updates=True)
+  print("Old webhook deleted successfully.")
+except Exception as e:
+  print(f"Webhook delete error: {e}")
+
 # إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
 app = Flask("")
 
@@ -21,7 +28,7 @@ def home():
 
 
 def run_flask():
-  app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+  app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 
 # رسالة البدء
@@ -29,8 +36,8 @@ def run_flask():
 def send_welcome(message):
   bot.reply_to(
       message,
-      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط من (TikTok, YouTube, Instagram, X/Twitter)"
-      " وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
+      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط من (TikTok, YouTube, Instagram,"
+      " X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
   )
 
 
@@ -39,7 +46,7 @@ def send_welcome(message):
 def handle_link(message):
   url = message.text.strip()
 
-  # التحقق البسيط من أن الرسالة رابط
+  # التحقق من أن الرسالة رابط
   if not url.startswith("http"):
     bot.reply_to(message, "الرجاء إرسال رابط صحيح يبدأ بـ http أو https.")
     return
@@ -47,18 +54,20 @@ def handle_link(message):
   msg = bot.reply_to(message, "⏳ جاري تحليل الرابط والتحميل، انتظر قليلاً...")
 
   # تشغيل التحميل في خيط منفصل (Background Thread) لعدم تجميد البوت
-  threading.Thread(target=download_and_send, args=(message.chat.id, url, msg.message_id)).start()
+  threading.Thread(
+      target=download_and_send, args=(message.chat.id, url, msg.message_id)
+  ).start()
 
 
 def download_and_send(chat_id, url, processing_msg_id):
   output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
   os.makedirs("downloads", exist_ok=True)
 
-  # إعدادات yt-dlp الذكية والمستقرة لتجنب المشاكل قدر الإمكان
+  # إعدادات yt-dlp المستقرة لتجنب مشاكل التحميل
   ydl_opts = {
       "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
       "outtmpl": output_template,
-      "max_filesize": 50 * 1024 * 1024,  # تحديد الحد الأقصى 50 ميجابايت لتوافق تيليجرام
+      "max_filesize": 50 * 1024 * 1024,  # الحد الأقصى 50 ميجابايت لتوافق تيليجرام
       "nocheckcertificate": True,
       "ignoreerrors": False,
       "quiet": True,
@@ -67,24 +76,22 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      # استخراج معلومات الفيديو أولاً للتحقق
       info = ydl.extract_info(url, download=True)
       downloaded_file = ydl.prepare_filename(info)
 
-    # التأكد من وجود الملف وجاهزيته للإرسال
     if downloaded_file and os.path.exists(downloaded_file):
       bot.edit_message_text(
-          "📤 جاري رفع الملف إليك...", chat_id=chat_id, message_id=processing_msg_id
+          "📤 جاري رفع الملف إليك...",
+          chat_id=chat_id,
+          message_id=processing_msg_id,
       )
 
       with open(downloaded_file, "rb") as f:
-        # فحص إذا كان الملف صوتاً أو فيديو للإرسال بالطريقة المناسبة
         if downloaded_file.endswith((".mp3", ".m4a", ".wav")):
           bot.send_audio(chat_id, f)
         else:
           bot.send_video(chat_id, f, supports_streaming=True)
 
-      # حذف رسالة "جاري التحميل" لتنظيف المحادثة
       bot.delete_message(chat_id, processing_msg_id)
     else:
       bot.edit_message_text(
@@ -95,7 +102,7 @@ def download_and_send(chat_id, url, processing_msg_id):
 
   except Exception as e:
     print(f"Error details: {e}")
-    error_msg = "❌ حدث خطأ أثناء التحميل. قد يكون الرابط محظوراً، أو الفيديو كبيراً جداً، أو المنصة غير متاح فيها التحميل مؤقتاً."
+    error_msg = "❌ حدث خطأ أثناء التحميل. قد يكون الرابط محظوراً، أو الفيديو كبيراً جداً، أو المنصة لا تدعم التحميل حالياً."
     try:
       bot.edit_message_text(
           error_msg, chat_id=chat_id, message_id=processing_msg_id
@@ -104,7 +111,6 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.send_message(chat_id, error_msg)
 
   finally:
-    # تنظيف وحذف الملف من مساحة التخزين المؤقتة حتماً لمنع امتلاء السيرفر
     if downloaded_file and os.path.exists(downloaded_file):
       try:
         os.remove(downloaded_file)
@@ -119,4 +125,4 @@ if __name__ == "__main__":
   flask_thread.start()
 
   print("Bot is starting...")
-  bot.infinity_polling()
+  bot.infinity_polling(skip_pending=True)
