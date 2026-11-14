@@ -2,6 +2,7 @@ import os
 import threading
 import time
 from flask import Flask
+import requests
 import telebot
 import yt_dlp
 
@@ -61,32 +62,40 @@ def handle_link(message):
 
 
 def download_and_send(chat_id, url, processing_msg_id):
-  output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
   os.makedirs("downloads", exist_ok=True)
-
-  # إعدادات متقدمة لتجاوز الحظر الجغرافي وحظر الـ IP
-  ydl_opts = {
-      "format": "best",
-      "outtmpl": output_template,
-      "max_filesize": 50 * 1024 * 1024,
-      "nocheckcertificate": True,
-      "ignoreerrors": False,
-      "quiet": True,
-      "geo_bypass": True,  # تجاوز الحظر الجغرافي
-      "http_headers": {
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-              " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-          ),
-          "Accept-Language": "en-US,en;q=0.9",
-      },
-  }
-
   downloaded_file = None
+
   try:
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(url, download=True)
-      downloaded_file = ydl.prepare_filename(info)
+    # معالجة خاصة لروابط تيك توك لتجاوز حظر السيرفرات السحابية تماماً
+    if "tiktok.com" in url or "douyin.com" in url:
+      api_url = (
+          f"https://tikwm.com/api/?url={url}&hd=1"  # API مجاني سريع لتيك توك
+      )
+      res = requests.get(api_url).json()
+      if res.get("code") == 0:
+        video_url = res["data"]["hdplay"] or res["data"]["play"]
+        # تحميل الفيديو مباشرة من الرابط النظيف
+        vid_data = requests.get(video_url).content
+        downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
+        with open(downloaded_file, "wb") as f:
+          f.write(vid_data)
+      else:
+        raise Exception("فشل استخراج فيديو تيك توك عبر الخدمة البديلة.")
+    else:
+      # باقي المنصات (يوتيوب، إنستغرام، إكس) تعمل بـ yt-dlp
+      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+      ydl_opts = {
+          "format": "best",
+          "outtmpl": output_template,
+          "max_filesize": 50 * 1024 * 1024,
+          "nocheckcertificate": True,
+          "ignoreerrors": False,
+          "quiet": True,
+          "geo_bypass": True,
+      }
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        downloaded_file = ydl.prepare_filename(info)
 
     if downloaded_file and os.path.exists(downloaded_file):
       bot.edit_message_text(
@@ -104,14 +113,14 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.delete_message(chat_id, processing_msg_id)
     else:
       bot.edit_message_text(
-          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل من هذا الرابط.",
+          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل.",
           chat_id=chat_id,
           message_id=processing_msg_id,
       )
 
   except Exception as e:
     print(f"Error details: {e}")
-    error_msg = f"❌ تعذر التحميل بسبب قيود المنصة (حظر السيرفر): {str(e)[:80]}"
+    error_msg = f"❌ حدث خطأ أثناء التحميل: {str(e)[:80]}"
     try:
       bot.edit_message_text(
           error_msg, chat_id=chat_id, message_id=processing_msg_id
