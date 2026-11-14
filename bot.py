@@ -66,38 +66,35 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    # معالجة ذكية ومخصصة لتيك توك لتجاوز حظر سيرفرات Render المجانية
+    # استخدام API بديل ومستقر لتيك توك (TikMate / API مشابه)
     if "tiktok.com" in url or "douyin.com" in url:
-      api_url = f"https://www.tikwm.com/api/?url={url}&hd=1"
+      api_url = f"https://api.tikmate.app/api/lookup?url={url}"
       headers = {
           "User-Agent": (
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          )
+              " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+          ),
+          "Referer": "https://tikmate.app/",
       }
       response = requests.get(api_url, headers=headers, timeout=10)
 
-      # التأكد من أن الاستجابة سليمةوليست صفحة خطأ
       if response.status_code == 200:
         res = response.json()
-        if res.get("code") == 0:
-          video_url = (
-              res["data"].get("hdplay")
-              or res["data"].get("play")
-              or res["data"].get("wmplay")
-          )
-          if video_url:
-            vid_data = requests.get(
-                video_url, headers=headers, timeout=15
-            ).content
-            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
-            with open(downloaded_file, "wb") as f:
-              f.write(vid_data)
-          else:
-            raise Exception("لم يتم العثور على رابط الفيديو داخل الاستجابة.")
+        token = res.get("token")
+        key = res.get("id")
+        if token and key:
+          # رابط التحميل المباشر بدون ووترمارك
+          video_url = f"https://tikmate.app/download/{token}/{key}.mp4?hd=1"
+          vid_data = requests.get(video_url, headers=headers, timeout=15).content
+          downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
+          with open(downloaded_file, "wb") as f:
+            f.write(vid_data)
         else:
-          raise Exception("رد غير متوقع من سيرفر تيك توك.")
+          raise Exception("فشل استخراج بيانات الفيديو من الرابط.")
       else:
-        raise Exception(f"فشل الاتصال بخدمة التحميل (Code: {response.status_code})")
+        raise Exception(
+            f"فشل الاتصال بالخدمة البديلة (Code: {response.status_code})"
+        )
     else:
       # باقي المنصات (يوتيوب، إنستغرام، وغيرها) تعمل بكفاءة عبر yt-dlp
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
