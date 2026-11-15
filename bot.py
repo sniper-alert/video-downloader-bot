@@ -1,3 +1,4 @@
+bot.delete_webhook(drop_pending_updates=True)
 import os
 import threading
 import time
