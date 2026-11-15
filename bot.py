@@ -13,18 +13,6 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# إيقاف أي جلسة قديمة وتنظيف الويب هوك بشكل كامل لمنع خطأ 409 Conflict
-try:
-  bot.stop_bot()
-except:
-  pass
-
-try:
-  bot.delete_webhook(drop_pending_updates=True)
-  print("Webhook cleared and pending updates dropped successfully.")
-except Exception as e:
-  print(f"Webhook error: {e}")
-
 # إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
 app = Flask("")
 
@@ -35,7 +23,8 @@ def home():
 
 
 def run_flask():
-  app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+  port = int(os.environ.get("PORT", 10000))
+  app.run(host="0.0.0.0", port=port)
 
 
 # رسالة البدء
@@ -154,7 +143,26 @@ def download_and_send(chat_id, url, processing_msg_id):
         print(f"Error removing file: {e}")
 
 
-# تشغيل سيرفر الـ Flask والبوت معاً بطريقة آمنة
+# نقطة التشغيل الرئيسية
 if __name__ == "__main__":
+  # تشغيل سيرفر الـ Flask في الخلفية ليبقى البوت نشطاً على Render
   flask_thread = threading.Thread(target=run_flask)
   flask_thread.daemon = True
+  flask_thread.start()
+  print("Flask server started successfully.")
+
+  # تنظيف الويب هوك القديم قبل بدء الاستماع
+  try:
+    bot.remove_webhook()
+    time.sleep(1)
+  except Exception as e:
+    print(f"Webhook remove error: {e}")
+
+  print("Bot is starting polling...")
+  # تشغيل البوت بثبات تام مع معالجة الاستثناءات لتجنب الخروج المفاجئ
+  while True:
+    try:
+      bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+    except Exception as e:
+      print(f"Polling error: {e}")
+      time.sleep(5)
