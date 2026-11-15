@@ -7,7 +7,7 @@ import telebot
 import yt_dlp
 
 # جلب توكن البوت من متغيرات البيئة بأمان
-TOKEN = os.environ.get("9239041330:AAEI-qJLtsxTVfjm2sW6G8ElASrZMsavmNc")
+TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
   raise ValueError("BOT_TOKEN is missing in environment variables!")
 
