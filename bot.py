@@ -2,6 +2,7 @@ import os
 import threading
 import time
 from flask import Flask
+import requests
 import telebot
 import yt_dlp
 
@@ -60,10 +61,10 @@ def download_and_send(chat_id, url, processing_msg_id):
 
   try:
     output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
-    
-    # إعدادات yt-dlp الذكية والمتكاملة لتجاوز حظر تيك توك وباقي المنصات
+
+    # إعدادات yt-dlp المتكاملة لتجاوز حظر يوتيوب وتيك توك وباقي المنصات
     ydl_opts = {
-        "format": "best",
+        "format": "best[filesize<50M]/best",
         "outtmpl": output_template,
         "max_filesize": 50 * 1024 * 1024,
         "nocheckcertificate": True,
@@ -71,13 +72,17 @@ def download_and_send(chat_id, url, processing_msg_id):
         "quiet": True,
         "geo_bypass": True,
         "extractor_args": {
-            "tiktok": {
-                "webpage_download": [True]
-            }
+            "tiktok": {"webpage_download": [True]},
+            "youtube": {
+                "player_client": ["android", "web"],
+            },
         },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            )
+        },
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -125,11 +130,13 @@ def download_and_send(chat_id, url, processing_msg_id):
 
 # نقطة التشغيل الرئيسية
 if __name__ == "__main__":
+  # تشغيل سيرفر الـ Flask في الخلفية
   flask_thread = threading.Thread(target=run_flask)
   flask_thread.daemon = True
   flask_thread.start()
   print("Flask server started successfully.")
 
+  # تنظيف الويب هوك القديم لمنع أي تعارض
   try:
     bot.remove_webhook()
     time.sleep(1)
