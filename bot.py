@@ -1,4 +1,3 @@
-bot.delete_webhook(drop_pending_updates=True)
 import os
 import threading
 import time
@@ -8,19 +7,23 @@ import telebot
 import yt_dlp
 
 # جلب توكن البوت من متغيرات البيئة بأمان
-TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = os.environ.get("9239041330:AAEI-qJLtsxTVfjm2sW6G8ElASrZMsavmNc")
 if not TOKEN:
   raise ValueError("BOT_TOKEN is missing in environment variables!")
 
 bot = telebot.TeleBot(TOKEN)
 
-# إيقاف أي اتصالات معلقة أو ويب هوك قديم لمنع خطأ 409 Conflict نهائياً
+# إيقاف أي جلسة قديمة وتنظيف الويب هوك بشكل كامل لمنع خطأ 409 Conflict
 try:
-  bot.remove_webhook()
-  time.sleep(1)
-  print("Webhook removed successfully.")
+  bot.stop_bot()
+except:
+  pass
+
+try:
+  bot.delete_webhook(drop_pending_updates=True)
+  print("Webhook cleared and pending updates dropped successfully.")
 except Exception as e:
-  print(f"Webhook remove error: {e}")
+  print(f"Webhook error: {e}")
 
 # إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
 app = Flask("")
@@ -68,7 +71,7 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    # معالجة تيك توك عبر خدمة بديلة مدعومة بـ Headers متطورة لتجنب 403
+    # معالجة تيك توك عبر خدمة بديلة مستقرة
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       headers = {
@@ -151,21 +154,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         print(f"Error removing file: {e}")
 
 
-# تشغيل سيرفر الـ Flask والبوت معاً بحلقة تشغيل آمنة ومستقرة
+# تشغيل سيرفر الـ Flask والبوت معاً بطريقة آمنة
 if __name__ == "__main__":
   flask_thread = threading.Thread(target=run_flask)
   flask_thread.daemon = True
-  flask_thread.start()
-
-  print("Bot is starting safely...")
-  while True:
-    try:
-      bot.infinity_polling(
-          skip_pending=True,
-          timeout=30,
-          long_polling_timeout=30,
-          restart_on_change=False,
-      )
-    except Exception as e:
-      print(f"Polling error: {e}")
-      time.sleep(5)
