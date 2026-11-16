@@ -74,13 +74,15 @@ def download_and_send(chat_id, url, processing_msg_id):
         "extractor_args": {
             "tiktok": {"webpage_download": [True]},
             "youtube": {
-                "player_client": ["android", "web"],
+                # تم التحديث لاستخدام عملاء iOS و Mobile Web لتجاوز حظر IP سيرفرات Render
+                "player_client": ["ios", "mweb", "web"],
             },
         },
         "http_headers": {
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 "
+                "Mobile/15E148 Safari/604.1"
             )
         },
     }
