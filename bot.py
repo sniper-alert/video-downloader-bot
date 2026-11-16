@@ -67,7 +67,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط تيك توك عبر tikwm (تعمل بكفاءة عالية)
+    # 1. معالجة روابط تيك توك عبر tikwm
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       response = requests.get(api_url, headers=headers, timeout=15)
@@ -90,9 +90,8 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في الاتصال بخدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة روابط يوتيوب عبر واجهة بديلة مستقرة تماماً لمعالجة الروابط
+    # 2. معالجة روابط يوتيوب عبر واجهة بديلة مستقرة
     elif "youtube.com" in url or "youtu.be" in url:
-      # استخدام واجهة بديلة موثوقة ومستقرة لجلب روابط يوتيوب
       api_endpoint = "https://api.cobalt.tools/api/json"
       payload = {"url": url, "vQuality": "720"}
       api_headers = {
@@ -128,7 +127,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
 
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp
+    # 3. باقي المنصات عبر yt-dlp
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
@@ -150,47 +149,3 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.edit_message_text(
           "📤 جاري رفع الملف إليك...",
           chat_id=chat_id,
-          message_id=processing_msg_id,
-      )
-
-      with open(downloaded_file, "rb") as f:
-        if downloaded_file.endswith((".mp3", ".m4a", ".wav")):
-          bot.send_audio(chat_id, f)
-        else:
-          bot.send_video(chat_id, f, supports_streaming=True)
-
-      bot.delete_message(chat_id, processing_msg_id)
-    else:
-      bot.edit_message_text(
-          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل.",
-          chat_id=chat_id,
-          message_id=processing_msg_id,
-      )
-
-  except Exception as e:
-    print(f"Error details: {e}")
-    error_msg = f"❌ تعذر التحميل: {str(e)[:70]}"
-    try:
-      bot.edit_message_text(
-          error_msg, chat_id=chat_id, message_id=processing_msg_id
-      )
-    except:
-      bot.send_message(chat_id, error_msg)
-
-  finally:
-    if downloaded_file and os.path.exists(downloaded_file):
-      try:
-        os.remove(downloaded_file)
-      except Exception as e:
-        print(f"Error removing file: {e}")
-
-
-# نقطة التشغيل الرئيسية
-if __name__ == "__main__":
-  flask_thread = threading.Thread(target=run_flask)
-  flask_thread.daemon = True
-  flask_thread.start()
-  print("Flask server started successfully.")
-
-  try:
-    bot.remove_webhook()
