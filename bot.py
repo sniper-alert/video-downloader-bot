@@ -67,7 +67,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط تيك توك (تعمل بكفاءة عالية عبر tikwm)
+    # 1. معالجة روابط تيك توك عبر tikwm (تعمل بكفاءة عالية)
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       response = requests.get(api_url, headers=headers, timeout=15)
@@ -90,10 +90,11 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في الاتصال بخدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة روابط يوتيوب عبر واجهة بديلة تتجاوز الحظر تماماً
+    # 2. معالجة روابط يوتيوب عبر واجهة بديلة مستقرة تماماً لمعالجة الروابط
     elif "youtube.com" in url or "youtu.be" in url:
-      cobalt_url = "https://co.wuk.sh/api/json"
-      payload = {"url": url, "videoQuality": "720"}
+      # استخدام واجهة بديلة موثوقة ومستقرة لجلب روابط يوتيوب
+      api_endpoint = "https://api.cobalt.tools/api/json"
+      payload = {"url": url, "vQuality": "720"}
       api_headers = {
           "Accept": "application/json",
           "Content-Type": "application/json",
@@ -103,7 +104,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       }
 
       response = requests.post(
-          cobalt_url, json=payload, headers=api_headers, timeout=20
+          api_endpoint, json=payload, headers=api_headers, timeout=20
       )
 
       if response.status_code == 200:
@@ -193,14 +194,3 @@ if __name__ == "__main__":
 
   try:
     bot.remove_webhook()
-    time.sleep(1)
-  except Exception as e:
-    print(f"Webhook remove error: {e}")
-
-  print("Bot is starting polling...")
-  while True:
-    try:
-      bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
-    except Exception as e:
-      print(f"Polling error: {e}")
-      time.sleep(5)
