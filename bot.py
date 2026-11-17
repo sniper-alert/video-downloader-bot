@@ -4,91 +4,59 @@ import time
 from flask import Flask
 import requests
 import telebot
-from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 import yt_dlp
 
-# --- بداية السيرفر الوهمي (لحل مشكلة Render) ---
+# جلب توكن البوت من متغيرات البيئة بأمان
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+  raise ValueError("BOT_TOKEN is missing in environment variables!")
+
+bot = telebot.TeleBot(TOKEN)
+
+# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render
 app = Flask("")
 
 
 @app.route("/")
 def home():
-  return "I am alive!"
+  return "Snal Bot is running 24/7!"
 
 
-def run():
-  app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+def run_flask():
+  port = int(os.environ.get("PORT", 10000))
+  app.run(host="0.0.0.0", port=port)
 
 
-def keep_alive():
-  t = threading.Thread(target=run)
-  t.start()
-
-
-# ---------------------------------------------
-
-BOT_TOKEN = os.environ.get(
-    "BOT_TOKEN", "9239041330:AAEk8woAvKhdslKCpPZUs9V4n2vs8Br3jB4"
-)
-bot = telebot.TeleBot(BOT_TOKEN)
-
-user_links = {}
-
-
-@bot.message_handler(commands=["start"])
+# رسالة البدء
+@bot.message_handler(commands=["start", "help"])
 def send_welcome(message):
-  print(
-      f"📥 [تتبع] تم استلام أمر start من المستخدم:"
-      f" {message.from_user.first_name}"
-  )
   bot.reply_to(
       message,
-      "أهلاً بك معك سِنآل! 👋\nأرسل لي رابط الفيديو (تيك توك، يوتيوب، إنستغرام،"
-      " X) وسأقوم بتحميله لك.",
+      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, YouTube, Instagram,"
+      " X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
   )
 
 
+# استقبال الروابط ومعالجتها
 @bot.message_handler(func=lambda message: True)
-def handle_all_messages(message):
-  text = message.text if message.text else ""
-  print(f"📥 [تتبع عام] وصلت رسالة من {message.chat.id}: {text}")
+def handle_link(message):
+  url = message.text.strip()
+  print(f"📥 [تتبع] تم استلام رابط من المستخدم {message.chat.id}: {url}")
 
-  if text.startswith("http"):
-    chat_id = message.chat.id
-    user_links[chat_id] = text.strip()
-
-    markup = InlineKeyboardMarkup()
-    markup.row_width = 2
-    markup.add(
-        InlineKeyboardButton("🎬 تحميل الفيديو", callback_data="vid_best"),
-        InlineKeyboardButton("🎵 صوت فقط (MP3)", callback_data="audio"),
-    )
-
-    bot.reply_to(message, "اختر صيغة التحميل المطلوبة:", reply_markup=markup)
-  else:
-    if not text.startswith("/"):
-      bot.reply_to(
-          message, "الرجاء إرسال رابط صحيح يبدأ بـ http أو https لتحميله."
-      )
-
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-  chat_id = call.message.chat.id
-  url = user_links.get(chat_id)
-
-  if not url:
-    bot.answer_callback_query(call.id, "انتهت صلاحية الرابط، أرسله مجدداً.")
+  if not url.startswith("http"):
+    bot.reply_to(message, "الرجاء إرسال رابط صحيح يبدأ بـ http أو https.")
     return
 
-  bot.edit_message_text(
-      "⏳ جاري التحميل والمعالجة... يرجى الانتظار.",
-      chat_id,
-      call.message.message_id,
-  )
+  msg = bot.reply_to(message, "⏳ جاري التحميل، انتظر قليلاً...")
 
-  file_prefix = f"download_{chat_id}"
-  filename = None
+  threading.Thread(
+      target=download_and_send, args=(message.chat.id, url, msg.message_id)
+  ).start()
+
+
+def download_and_send(chat_id, url, processing_msg_id):
+  os.makedirs("downloads", exist_ok=True)
+  downloaded_file = None
 
   try:
     headers = {
@@ -98,7 +66,7 @@ def callback_query(call):
         )
     }
 
-    # 1. معالجة روابط تيك توك بكفاءة عبر tikwm
+    # 1. معالجة روابط تيك توك عبر tikwm (مستقرة وسريعة)
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       response = requests.get(api_url, headers=headers, timeout=15)
@@ -111,8 +79,8 @@ def callback_query(call):
             vid_data = requests.get(
                 video_url, headers=headers, timeout=25
             ).content
-            filename = f"{file_prefix}.mp4"
-            with open(filename, "wb") as f:
+            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
+            with open(downloaded_file, "wb") as f:
               f.write(vid_data)
           else:
             raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
@@ -121,10 +89,10 @@ def callback_query(call):
       else:
         raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة روابط يوتيوب عبر واجهة الـ API العامة والمستقرة
+    # 2. معالجة روابط يوتيوب عبر واجهة API موثوقة ومحدثة لـ Cobalt
     elif "youtube.com" in url or "youtu.be" in url:
-      api_endpoint = "https://co.wuk.sh/api/json"
-      payload = {"url": url, "videoQuality": "720"}
+      api_endpoint = "https://api.cobalt.tools/api/json"
+      payload = {"url": url, "vQuality": "720"}
       api_headers = {
           "Accept": "application/json",
           "Content-Type": "application/json",
@@ -144,106 +112,33 @@ def callback_query(call):
         if status == "stream" or status == "redirect":
           video_url = res.get("url")
           if video_url:
+            # فحص حجم الملف قبل تحميله بالكامل لتجنب مشاكل الحجم
+            head_resp = requests.head(video_url, headers=headers, timeout=10)
+            file_size = int(head_resp.headers.get("Content-Length", 0))
+
+            # حد تيليجرام للبوتات المجانية هو 50 ميجابايت (52428800 بايت)
+            if file_size > 50 * 1024 * 1024:
+              raise Exception(
+                  "حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله."
+              )
+
             vid_data = requests.get(
                 video_url, headers=headers, stream=True, timeout=35
             ).content
-            filename = f"{file_prefix}.mp4"
-            with open(filename, "wb") as f:
+            downloaded_file = f"downloads/youtube_{chat_id}.mp4"
+            with open(downloaded_file, "wb") as f:
               f.write(vid_data)
           else:
-            raise Exception("فشل استخراج رابط التحميل المباشر من يوتيوب.")
+            raise Exception("فشل استخراج رابط التحميل المباشر.")
         else:
           error_text = res.get("text", "عذراً، يوتيوب يحظر هذا الرابط مؤقتاً.")
           raise Exception(error_text)
       else:
         raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
 
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp
+    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
     else:
+      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
-          "outtmpl": f"{file_prefix}.%(ext)s",
-          "quiet": True,
-          "no_warnings": True,
           "format": "best[filesize<50M]/best",
-          "geo_bypass": True,
-          "nocheckcertificate": True,
-          "http_headers": headers,
-      }
-
-      if call.data == "audio":
-        ydl_opts["format"] = "bestaudio/best"
-        ydl_opts["postprocessors"] = [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ]
-
-      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if call.data == "audio":
-          filename = os.path.splitext(filename)[0] + ".mp3"
-
-    if not filename or not os.path.exists(filename):
-      raise Exception("فشل حفظ الملف على الخادم.")
-
-    # التحقق من حجم الملف (حد تيليجرام 50 ميجابايت)
-    file_size_mb = os.path.getsize(filename) / (1024 * 1024)
-    if file_size_mb > 50:
-      bot.edit_message_text(
-          f"❌ عذراً، حجم الملف ({file_size_mb:.1f}MB) كبير جداً ويتجاوز حد"
-          " تيليجرام.",
-          chat_id,
-          call.message.message_id,
-      )
-      os.remove(filename)
-      return
-
-    bot.edit_message_text(
-        "📤 جاري إرسال الملف إليك...", chat_id, call.message.message_id
-    )
-
-    with open(filename, "rb") as file:
-      if call.data == "audio":
-        bot.send_audio(chat_id, file)
-      else:
-        bot.send_video(chat_id, file)
-
-    os.remove(filename)
-    bot.delete_message(chat_id, call.message.message_id)
-
-  except Exception as e:
-    print(f"Error details: {e}")
-    bot.edit_message_text(
-        f"❌ حدث خطأ أثناء التحميل.\nالتفاصيل: {str(e)[:100]}",
-        chat_id,
-        call.message.message_id,
-    )
-    for f in os.listdir():
-      if f.startswith(file_prefix):
-        try:
-          os.remove(f)
-        except:
-          pass
-
-
-# --- تشغيل السيرفر الوهمي والبوت معاً ---
-if __name__ == "__main__":
-  keep_alive()
-  print("البوت يعمل الآن ويقوم بتنظيف الويب هوك...")
-
-  try:
-    bot.remove_webhook()
-    bot.delete_webhook(drop_pending_updates=True)
-  except Exception as e:
-    print(f"Webhook error: {e}")
-
-  print("بدء استقبال الرسائل (Polling)...")
-  while True:
-    try:
-      bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
-    except Exception as e:
-      print(f"Polling error: {e}")
-      time.sleep(5)
+          "
