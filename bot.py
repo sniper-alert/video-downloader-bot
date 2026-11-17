@@ -66,54 +66,30 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط يوتيوب (عبر واجهة API المحدثة والمستقرة لـ Cobalt)
-    if "youtube.com" in url or "youtu.be" in url:
-      api_endpoint = "https://api.cobalt.tools/api/json"
-      payload = {"url": url, "vQuality": "720"}
-      api_headers = {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          ),
-      }
-
-      response = requests.post(
-          api_endpoint, json=payload, headers=api_headers, timeout=25
-      )
+    # 1. معالجة روابط تيك توك عبر tikwm (مستقرة وسريعة)
+    if "tiktok.com" in url or "douyin.com" in url:
+      api_url = f"https://tikwm.com/api/?url={url}&hd=1"
+      response = requests.get(api_url, headers=headers, timeout=15)
 
       if response.status_code == 200:
         res = response.json()
-        status = res.get("status")
-
-        if status == "stream" or status == "redirect":
-          video_url = res.get("url")
+        if res.get("code") == 0:
+          video_url = res["data"].get("hdplay") or res["data"].get("play")
           if video_url:
-            # فحص حجم الملف قبل تحميله بالكامل لتجنب مشاكل الحجم
-            head_resp = requests.head(video_url, headers=headers, timeout=10)
-            file_size = int(head_resp.headers.get("Content-Length", 0))
-
-            # حد تيليجرام للبوتات المجانية هو 50 ميجابايت (52428800 بايت)
-            if file_size > 50 * 1024 * 1024:
-              raise Exception(
-                  "حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله."
-              )
-
             vid_data = requests.get(
-                video_url, headers=headers, stream=True, timeout=35
+                video_url, headers=headers, timeout=25
             ).content
-            downloaded_file = f"downloads/youtube_{chat_id}.mp4"
+            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
             with open(downloaded_file, "wb") as f:
               f.write(vid_data)
           else:
-            raise Exception("فشل استخراج رابط التحميل المباشر.")
+            raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
         else:
-          error_text = res.get("text", "عذراً، يوتيوب يحظر هذا الرابط مؤقتاً.")
-          raise Exception(error_text)
+          raise Exception("رابط تيك توك غير صالح أو غير موجود.")
       else:
-        raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
+        raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-    # 2. باقي المنصات (تيك توك، إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
+    # 2. معالجة يوتيوب وباقي المنصات عبر yt-dlp الذكي مع دعم ملف الكوكيز لتجاوز الحظر
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
@@ -125,7 +101,17 @@ def download_and_send(chat_id, url, processing_msg_id):
           "quiet": True,
           "geo_bypass": True,
           "http_headers": headers,
+          "extractor_args": {
+              "youtube": {
+                  "player_client": ["android", "web"],
+              }
+          },
       }
+
+      # إذا وُجد ملف cookies.txt في المشروع، يتم استخدامه لتخطي قيود يوتيوب نهائياً
+      if os.path.exists("cookies.txt"):
+        ydl_opts["cookiefile"] = "cookies.txt"
+
       with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         downloaded_file = ydl.prepare_filename(info)
@@ -187,7 +173,7 @@ if __name__ == "__main__":
     print(f"Webhook remove error: {e}")
 
   print("Bot is starting polling...")
-  while True:
+  while Thread_loop := True:
     try:
       bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
     except Exception as e:
