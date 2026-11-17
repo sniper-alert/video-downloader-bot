@@ -149,3 +149,58 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.edit_message_text(
           "📤 جاري رفع الملف إليك...",
           chat_id=chat_id,
+          message_id=processing_msg_id,
+      )
+
+      with open(downloaded_file, "rb") as f:
+        if downloaded_file.endswith((".mp3", ".m4a", ".wav")):
+          bot.send_audio(chat_id, f)
+        else:
+          bot.send_video(chat_id, f, supports_streaming=True)
+
+      bot.delete_message(chat_id, processing_msg_id)
+    else:
+      bot.edit_message_text(
+          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل.",
+          chat_id=chat_id,
+          message_id=processing_msg_id,
+      )
+
+  except Exception as e:
+    print(f"Error details: {e}")
+    error_msg = f"❌ تعذر التحميل: {str(e)[:70]}"
+    try:
+      bot.edit_message_text(
+          error_msg, chat_id=chat_id, message_id=processing_msg_id
+      )
+    except Exception:
+      bot.send_message(chat_id, error_msg)
+
+  finally:
+    if downloaded_file and os.path.exists(downloaded_file):
+      try:
+        os.remove(downloaded_file)
+      except Exception as e:
+        print(f"Error removing file: {e}")
+
+
+# نقطة التشغيل الرئيسية
+if __name__ == "__main__":
+  flask_thread = threading.Thread(target=run_flask)
+  flask_thread.daemon = True
+  flask_thread.start()
+  print("Flask server started successfully.")
+
+  try:
+    bot.remove_webhook()
+    time.sleep(1)
+  except Exception as e:
+    print(f"Webhook remove error: {e}")
+
+  print("Bot is starting polling...")
+  while True:
+    try:
+      bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+    except Exception as e:
+      print(f"Polling error: {e}")
+      time.sleep(5)
