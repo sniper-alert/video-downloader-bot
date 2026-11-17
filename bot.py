@@ -1,10 +1,8 @@
 import os
-
-# تحديث أداة التحميل لأحدث إصدار تلقائياً
-os.system("pip install --upgrade yt-dlp")
-
 import threading
+import time
 from flask import Flask
+import requests
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 import yt_dlp
@@ -50,7 +48,6 @@ def send_welcome(message):
   )
 
 
-# التقاط أي رسالة تحتوي على رابط للتأكد من الاستلام
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
   text = message.text if message.text else ""
@@ -91,47 +88,112 @@ def callback_query(call):
   )
 
   file_prefix = f"download_{chat_id}"
-
-  ydl_opts = {
-      "outtmpl": f"{file_prefix}.%(ext)s",
-      "quiet": True,
-      "no_warnings": True,
-      "format": "best[filesize<50M]/worst[ext=mp4]/best",
-      "geo_bypass": True,
-      "nocheckcertificate": True,
-      "extractor_args": {"youtube": {"player_client": ["android", "mweb"]}},
-      "http_headers": {
-          "User-Agent": (
-              "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML,"
-              " like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
-          )
-      },
-  }
-
-  if call.data == "audio":
-    ydl_opts["format"] = "bestaudio/best"
-    ydl_opts["postprocessors"] = [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "192",
-        }
-    ]
+  filename = None
 
   try:
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(url, download=True)
-      filename = ydl.prepare_filename(info)
-      if call.data == "audio":
-        filename = os.path.splitext(filename)[0] + ".mp3"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
 
-    if not os.path.exists(filename):
+    # 1. معالجة روابط تيك توك بكفاءة عبر tikwm
+    if "tiktok.com" in url or "douyin.com" in url:
+      api_url = f"https://tikwm.com/api/?url={url}&hd=1"
+      response = requests.get(api_url, headers=headers, timeout=15)
+
+      if response.status_code == 200:
+        res = response.json()
+        if res.get("code") == 0:
+          video_url = res["data"].get("hdplay") or res["data"].get("play")
+          if video_url:
+            vid_data = requests.get(
+                video_url, headers=headers, timeout=25
+            ).content
+            filename = f"{file_prefix}.mp4"
+            with open(filename, "wb") as f:
+              f.write(vid_data)
+          else:
+            raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
+        else:
+          raise Exception("رابط تيك توك غير صالح أو غير موجود.")
+      else:
+        raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
+
+    # 2. معالجة روابط يوتيوب عبر واجهة الـ API العامة والمستقرة
+    elif "youtube.com" in url or "youtu.be" in url:
+      api_endpoint = "https://co.wuk.sh/api/json"
+      payload = {"url": url, "videoQuality": "720"}
+      api_headers = {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          ),
+      }
+
+      response = requests.post(
+          api_endpoint, json=payload, headers=api_headers, timeout=25
+      )
+
+      if response.status_code == 200:
+        res = response.json()
+        status = res.get("status")
+
+        if status == "stream" or status == "redirect":
+          video_url = res.get("url")
+          if video_url:
+            vid_data = requests.get(
+                video_url, headers=headers, stream=True, timeout=35
+            ).content
+            filename = f"{file_prefix}.mp4"
+            with open(filename, "wb") as f:
+              f.write(vid_data)
+          else:
+            raise Exception("فشل استخراج رابط التحميل المباشر من يوتيوب.")
+        else:
+          error_text = res.get("text", "عذراً، يوتيوب يحظر هذا الرابط مؤقتاً.")
+          raise Exception(error_text)
+      else:
+        raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
+
+    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp
+    else:
+      ydl_opts = {
+          "outtmpl": f"{file_prefix}.%(ext)s",
+          "quiet": True,
+          "no_warnings": True,
+          "format": "best[filesize<50M]/best",
+          "geo_bypass": True,
+          "nocheckcertificate": True,
+          "http_headers": headers,
+      }
+
+      if call.data == "audio":
+        ydl_opts["format"] = "bestaudio/best"
+        ydl_opts["postprocessors"] = [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ]
+
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
+        if call.data == "audio":
+          filename = os.path.splitext(filename)[0] + ".mp3"
+
+    if not filename or not os.path.exists(filename):
       raise Exception("فشل حفظ الملف على الخادم.")
 
+    # التحقق من حجم الملف (حد تيليجرام 50 ميجابايت)
     file_size_mb = os.path.getsize(filename) / (1024 * 1024)
     if file_size_mb > 50:
       bot.edit_message_text(
-          f"❌ عذراً، حجم الفيديو ({file_size_mb:.1f}MB) كبير جداً ويتجاوز حد"
+          f"❌ عذراً، حجم الملف ({file_size_mb:.1f}MB) كبير جداً ويتجاوز حد"
           " تيليجرام.",
           chat_id,
           call.message.message_id,
@@ -153,6 +215,7 @@ def callback_query(call):
     bot.delete_message(chat_id, call.message.message_id)
 
   except Exception as e:
+    print(f"Error details: {e}")
     bot.edit_message_text(
         f"❌ حدث خطأ أثناء التحميل.\nالتفاصيل: {str(e)[:100]}",
         chat_id,
@@ -183,6 +246,4 @@ if __name__ == "__main__":
       bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
     except Exception as e:
       print(f"Polling error: {e}")
-      import time
-
       time.sleep(5)
