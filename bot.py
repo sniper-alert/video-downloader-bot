@@ -29,7 +29,9 @@ def keep_alive():
 
 # ---------------------------------------------
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "9239041330:AAEk8woAvKhdslKCpPZUs9V4n2vs8Br3jB4")
+BOT_TOKEN = os.environ.get(
+    "BOT_TOKEN", "9239041330:AAEk8woAvKhdslKCpPZUs9V4n2vs8Br3jB4"
+)
 bot = telebot.TeleBot(BOT_TOKEN)
 
 user_links = {}
@@ -37,6 +39,10 @@ user_links = {}
 
 @bot.message_handler(commands=["start"])
 def send_welcome(message):
+  print(
+      f"📥 [تتبع] تم استلام أمر start من المستخدم:"
+      f" {message.from_user.first_name}"
+  )
   bot.reply_to(
       message,
       "أهلاً بك معك سِنآل! 👋\nأرسل لي رابط الفيديو (تيك توك، يوتيوب، إنستغرام،"
@@ -44,21 +50,29 @@ def send_welcome(message):
   )
 
 
-@bot.message_handler(
-    func=lambda message: message.text and message.text.startswith("http")
-)
-def handle_url(message):
-  chat_id = message.chat.id
-  user_links[chat_id] = message.text.strip()
+# التقاط أي رسالة تحتوي على رابط للتأكد من الاستلام
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+  text = message.text if message.text else ""
+  print(f"📥 [تتبع عام] وصلت رسالة من {message.chat.id}: {text}")
 
-  markup = InlineKeyboardMarkup()
-  markup.row_width = 2
-  markup.add(
-      InlineKeyboardButton("🎬 تحميل الفيديو", callback_data="vid_best"),
-      InlineKeyboardButton("🎵 صوت فقط (MP3)", callback_data="audio"),
-  )
+  if text.startswith("http"):
+    chat_id = message.chat.id
+    user_links[chat_id] = text.strip()
 
-  bot.reply_to(message, "اختر صيغة التحميل المطلوبة:", reply_markup=markup)
+    markup = InlineKeyboardMarkup()
+    markup.row_width = 2
+    markup.add(
+        InlineKeyboardButton("🎬 تحميل الفيديو", callback_data="vid_best"),
+        InlineKeyboardButton("🎵 صوت فقط (MP3)", callback_data="audio"),
+    )
+
+    bot.reply_to(message, "اختر صيغة التحميل المطلوبة:", reply_markup=markup)
+  else:
+    if not text.startswith("/"):
+      bot.reply_to(
+          message, "الرجاء إرسال رابط صحيح يبدأ بـ http أو https لتحميله."
+      )
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -78,7 +92,6 @@ def callback_query(call):
 
   file_prefix = f"download_{chat_id}"
 
-  # إعدادات متقدمة لـ yt-dlp تتجاوز حظر يوتيوب (429 و Sign in) وتدعم باقي المنصات
   ydl_opts = {
       "outtmpl": f"{file_prefix}.%(ext)s",
       "quiet": True,
@@ -156,5 +169,20 @@ def callback_query(call):
 # --- تشغيل السيرفر الوهمي والبوت معاً ---
 if __name__ == "__main__":
   keep_alive()
-  print("البوت يعمل الآن...")
-  bot.infinity_polling(skip_pending=True)
+  print("البوت يعمل الآن ويقوم بتنظيف الويب هوك...")
+
+  try:
+    bot.remove_webhook()
+    bot.delete_webhook(drop_pending_updates=True)
+  except Exception as e:
+    print(f"Webhook error: {e}")
+
+  print("بدء استقبال الرسائل (Polling)...")
+  while True:
+    try:
+      bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+    except Exception as e:
+      print(f"Polling error: {e}")
+      import time
+
+      time.sleep(5)
