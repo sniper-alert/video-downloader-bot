@@ -66,10 +66,14 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط يوتيوب (عبر واجهة API عامة ومحدثة)
+    # 1. معالجة روابط يوتيوب (عبر خادم API حديث ومستقر للعام العام)
     if "youtube.com" in url or "youtu.be" in url:
-      api_endpoint = "https://co.wuk.sh/api/json"
-      payload = {"url": url, "videoQuality": "720"}
+      api_endpoint = "https://api.cobalt.tools/api/json"
+      payload = {
+          "url": url,
+          "vQuality": "720",
+          "filenamePattern": "classic",
+      }
       api_headers = {
           "Accept": "application/json",
           "Content-Type": "application/json",
