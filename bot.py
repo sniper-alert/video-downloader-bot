@@ -1,4 +1,8 @@
 import os
+
+# تحديث تلقائي لأداة yt-dlp لضمان تجاوز تحديثات يوتيوب المستمرة دون الحاجة لكوكيز
+os.system("pip install --upgrade yt-dlp")
+
 import threading
 import time
 from flask import Flask
@@ -66,7 +70,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط تيك توك عبر tikwm (مستقرة وسريعة)
+    # 1. معالجة روابط تيك توك عبر tikwm (سريعة ومستقرة للجميع)
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       response = requests.get(api_url, headers=headers, timeout=15)
@@ -89,7 +93,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة يوتيوب وباقي المنصات عبر yt-dlp الذكي مع دعم ملف الكوكيز لتجاوز الحظر
+    # 2. معالجة روابط يوتيوب وباقي المنصات عبر yt-dlp المحسّن (يعمل للجميع علنياً)
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
@@ -101,16 +105,13 @@ def download_and_send(chat_id, url, processing_msg_id):
           "quiet": True,
           "geo_bypass": True,
           "http_headers": headers,
+          # استخدام عدة عملاء تشغيل لتجاوز الحظر علنياً بدون كوكيز
           "extractor_args": {
               "youtube": {
-                  "player_client": ["android", "web"],
+                  "player_client": ["android", "tv", "web_embedded"],
               }
           },
       }
-
-      # إذا وُجد ملف cookies.txt في المشروع، يتم استخدامه لتخطي قيود يوتيوب نهائياً
-      if os.path.exists("cookies.txt"):
-        ydl_opts["cookiefile"] = "cookies.txt"
 
       with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -173,7 +174,7 @@ if __name__ == "__main__":
     print(f"Webhook remove error: {e}")
 
   print("Bot is starting polling...")
-  while Thread_loop := True:
+  while True:
     try:
       bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
     except Exception as e:
