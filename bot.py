@@ -2,6 +2,7 @@ import os
 import threading
 import time
 from flask import Flask
+import requests
 import telebot
 import yt_dlp
 
@@ -12,7 +13,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render
+# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
 app = Flask("")
 
 
@@ -31,8 +32,8 @@ def run_flask():
 def send_welcome(message):
   bot.reply_to(
       message,
-      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط وسأقوم بتحميله وإرساله لك"
-      " فوراً بجودة عالية.",
+      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, YouTube, Instagram,"
+      " X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
   )
 
 
@@ -58,27 +59,66 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    # إعدادات متقدمة لـ yt-dlp لدعم جميع المنصات (تيك توك، يوتيوب، إنستغرام، إكس)
-    output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
-    ydl_opts = {
-        "format": "best[filesize<50M]/best",
-        "outtmpl": output_template,
-        "max_filesize": 50 * 1024 * 1024,
-        "nocheckcertificate": True,
-        "ignoreerrors": False,
-        "quiet": True,
-        "geo_bypass": True,
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-        },
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(url, download=True)
-      downloaded_file = ydl.prepare_filename(info)
+    # 1. معالجة روابط يوتيوب (عبر واجهة API عامة ومحدثة تتجاوز حظر Render)
+    if "youtube.com" in url or "youtu.be" in url:
+      api_endpoint = "https://co.wuk.sh/api/json"
+      payload = {"url": url, "videoQuality": "720"}
+      api_headers = {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          ),
+      }
+
+      response = requests.post(
+          api_endpoint, json=payload, headers=api_headers, timeout=25
+      )
+
+      if response.status_code == 200:
+        res = response.json()
+        status = res.get("status")
+
+        if status == "stream" or status == "redirect":
+          video_url = res.get("url")
+          if video_url:
+            vid_data = requests.get(
+                video_url, headers=headers, stream=True, timeout=35
+            ).content
+            downloaded_file = f"downloads/youtube_{chat_id}.mp4"
+            with open(downloaded_file, "wb") as f:
+              f.write(vid_data)
+          else:
+            raise Exception("فشل استخراج رابط التحميل المباشر.")
+        else:
+          error_text = res.get("text", "عذراً، يوتيوب يحظر هذا الرابط مؤقتاً.")
+          raise Exception(error_text)
+      else:
+        raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
+
+    # 2. باقي المنصات (تيك توك، إنستغرام، إكس) عبر yt-dlp
+    else:
+      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+      ydl_opts = {
+          "format": "best[filesize<50M]/best",
+          "outtmpl": output_template,
+          "max_filesize": 50 * 1024 * 1024,
+          "nocheckcertificate": True,
+          "ignoreerrors": False,
+          "quiet": True,
+          "geo_bypass": True,
+          "http_headers": headers,
+      }
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        downloaded_file = ydl.prepare_filename(info)
 
     # إرسال الملف بعد التحميل الناجح
     if downloaded_file and os.path.exists(downloaded_file):
@@ -96,50 +136,3 @@ def download_and_send(chat_id, url, processing_msg_id):
 
       bot.delete_message(chat_id, processing_msg_id)
     else:
-      bot.edit_message_text(
-          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل.",
-          chat_id=chat_id,
-          message_id=processing_msg_id,
-      )
-
-  except Exception as e:
-    print(f"Error details: {e}")
-    error_msg = f"❌ تعذر التحميل: {str(e)[:70]}"
-    try:
-      bot.edit_message_text(
-          error_msg, chat_id=chat_id, message_id=processing_msg_id
-      )
-    except Exception:
-      bot.send_message(chat_id, error_msg)
-
-  finally:
-    if downloaded_file and os.path.exists(downloaded_file):
-      try:
-        os.remove(downloaded_file)
-      except Exception as e:
-        print(f"Error removing file: {e}")
-
-
-# نقطة التشغيل الرئيسية
-if __name__ == "__main__":
-  flask_thread = threading.Thread(target=run_flask)
-  flask_thread.daemon = True
-  flask_thread.start()
-  print("Flask server started successfully and port is bound.")
-
-  time.sleep(2)
-
-  try:
-    bot.remove_webhook()
-    bot.delete_webhook(drop_pending_updates=True)
-    print("Webhook cleaned successfully!")
-  except Exception as e:
-    print(f"Webhook remove error: {e}")
-
-  print("Bot is starting polling...")
-  while True:
-    try:
-      bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
-    except Exception as e:
-      print(f"Polling error: {e}")
-      time.sleep(5)
