@@ -13,7 +13,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
+# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render
 app = Flask("")
 
 
@@ -66,7 +66,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط يوتيوب (عبر واجهة API عامة ومحدثة تتجاوز حظر Render)
+    # 1. معالجة روابط يوتيوب (عبر واجهة API عامة ومحدثة)
     if "youtube.com" in url or "youtu.be" in url:
       api_endpoint = "https://co.wuk.sh/api/json"
       payload = {"url": url, "videoQuality": "720"}
@@ -129,10 +129,4 @@ def download_and_send(chat_id, url, processing_msg_id):
       )
 
       with open(downloaded_file, "rb") as f:
-        if downloaded_file.endswith((".mp3", ".m4a", ".wav")):
-          bot.send_audio(chat_id, f)
-        else:
-          bot.send_video(chat_id, f, supports_streaming=True)
-
-      bot.delete_message(chat_id, processing_msg_id)
-    else:
+        if downloaded_file.endswith((".mp3", ".m4a", ".
