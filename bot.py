@@ -66,33 +66,10 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط تيك توك عبر tikwm (مستقرة وسريعة)
-    if "tiktok.com" in url or "douyin.com" in url:
-      api_url = f"https://tikwm.com/api/?url={url}&hd=1"
-      response = requests.get(api_url, headers=headers, timeout=15)
-
-      if response.status_code == 200:
-        res = response.json()
-        if res.get("code") == 0:
-          video_url = res["data"].get("hdplay") or res["data"].get("play")
-          if video_url:
-            vid_data = requests.get(
-                video_url, headers=headers, timeout=25
-            ).content
-            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
-            with open(downloaded_file, "wb") as f:
-              f.write(vid_data)
-          else:
-            raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
-        else:
-          raise Exception("رابط تيك توك غير صالح أو غير موجود.")
-      else:
-        raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
-
-    # 2. معالجة روابط يوتيوب عبر واجهة API موثوقة ومحدثة لـ Cobalt
-    elif "youtube.com" in url or "youtu.be" in url:
-      api_endpoint = "https://api.cobalt.tools/api/json"
-      payload = {"url": url, "vQuality": "720"}
+    # 1. معالجة روابط يوتيوب (عبر واجهة API موثوقة تتجاوز حظر السيرفرات تماماً)
+    if "youtube.com" in url or "youtu.be" in url:
+      api_endpoint = "https://co.wuk.sh/api/json"
+      payload = {"url": url, "videoQuality": "720"}
       api_headers = {
           "Accept": "application/json",
           "Content-Type": "application/json",
@@ -112,9 +89,11 @@ def download_and_send(chat_id, url, processing_msg_id):
         if status == "stream" or status == "redirect":
           video_url = res.get("url")
           if video_url:
+            # فحص حجم الملف قبل تحميله بالكامل لتجنب مشاكل الحجم
             head_resp = requests.head(video_url, headers=headers, timeout=10)
             file_size = int(head_resp.headers.get("Content-Length", 0))
 
+            # حد تيليجرام للبوتات المجانية هو 50 ميجابايت (52428800 بايت)
             if file_size > 50 * 1024 * 1024:
               raise Exception(
                   "حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله."
@@ -134,7 +113,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
 
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
+    # 2. باقي المنصات (تيك توك، إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
