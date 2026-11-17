@@ -1,8 +1,5 @@
 import os
-
-# تحديث تلقائي لأداة yt-dlp لضمان تجاوز تحديثات يوتيوب المستمرة دون الحاجة لكوكيز
-os.system("pip install --upgrade yt-dlp")
-
+import re
 import threading
 import time
 from flask import Flask
@@ -70,7 +67,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط تيك توك عبر tikwm (سريعة ومستقرة للجميع)
+    # 1. معالجة روابط تيك توك عبر tikwm (سريعة ومستقرة)
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       response = requests.get(api_url, headers=headers, timeout=15)
@@ -93,7 +90,67 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة روابط يوتيوب وباقي المنصات عبر yt-dlp المحسّن (يعمل للجميع علنياً)
+    # 2. معالجة روابط يوتيوب عبر Invidious API لتجاوز حظر 429 وصعوبات السيرفر
+    elif "youtube.com" in url or "youtu.be" in url:
+      video_id = None
+      patterns = [
+          r"(?:v=|\/)([0-9A-Za-z_-]{11}).*",
+          r"(?:embed\/)([0-9A-Za-z_-]{11})",
+          r"(?:youtu\.be\/)([0-9A-Za-z_-]{11})",
+      ]
+      for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+          video_id = match.group(1)
+          break
+
+      if not video_id:
+        raise Exception("رابط يوتيوب غير صالح.")
+
+      # قائمة بالخوادم البديلة الموثوقة لجلب تفاصيل يوتيوب
+      instances = [
+          "https://vid.puffyan.us",
+          "https://invidious.fdn.fr",
+          "https://inv.nadeko.net",
+          "https://invidious.privacyredirect.com",
+      ]
+
+      stream_url = None
+      for instance in instances:
+        try:
+          api_url = f"{instance}/api/v1/videos/{video_id}"
+          resp = requests.get(api_url, headers=headers, timeout=10)
+          if resp.status_code == 200:
+            data = resp.json()
+            format_streams = data.get("formatStreams", [])
+            for stream in format_streams:
+              if stream.get("container") == "mp4" and stream.get("url"):
+                stream_url = stream.get("url")
+                break
+            if not stream_url and format_streams:
+              stream_url = format_streams.get("url")
+            if stream_url:
+              break
+        except Exception:
+          continue
+
+      if not stream_url:
+        raise Exception("عذراً، يوتيوب يحظر هذا الرابط مؤقتاً أو الخوادم مزدحمة.")
+
+      # فحص حجم الفيديو قبل التحميل لتجنب تجاوز حد 50 ميجابايت
+      head_resp = requests.head(stream_url, headers=headers, timeout=10)
+      file_size = int(head_resp.headers.get("Content-Length", 0))
+      if file_size > 50 * 1024 * 1024:
+        raise Exception("حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله.")
+
+      vid_data = requests.get(
+          stream_url, headers=headers, stream=True, timeout=35
+      ).content
+      downloaded_file = f"downloads/youtube_{chat_id}.mp4"
+      with open(downloaded_file, "wb") as f:
+        f.write(vid_data)
+
+    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
@@ -105,14 +162,7 @@ def download_and_send(chat_id, url, processing_msg_id):
           "quiet": True,
           "geo_bypass": True,
           "http_headers": headers,
-          # استخدام عدة عملاء تشغيل لتجاوز الحظر علنياً بدون كوكيز
-          "extractor_args": {
-              "youtube": {
-                  "player_client": ["android", "tv", "web_embedded"],
-              }
-          },
       }
-
       with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         downloaded_file = ydl.prepare_filename(info)
