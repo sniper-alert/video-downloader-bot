@@ -12,7 +12,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render
+# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
 app = Flask("")
 
 
@@ -58,7 +58,7 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    # إعدادات متقدمة لـ yt-dlp لتعمل مع كافة المنصات بما فيها يوتيوب وتيك توك
+    # إعدادات متقدمة لـ yt-dlp لتجاوز حظر يوتيوب (429 و Sign in) بدون كوكيز
     output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
     ydl_opts = {
         "format": "best[filesize<50M]/best",
@@ -68,13 +68,16 @@ def download_and_send(chat_id, url, processing_msg_id):
         "ignoreerrors": False,
         "quiet": True,
         "geo_bypass": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "mweb", "ios"],
+            }
+        },
         "http_headers": {
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
+                "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML,"
+                " like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+            )
         },
     }
 
