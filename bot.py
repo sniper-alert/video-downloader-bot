@@ -115,4 +115,13 @@ def download_and_send(chat_id, url, processing_msg_id):
             head_resp = requests.head(video_url, headers=headers, timeout=10)
             file_size = int(head_resp.headers.get("Content-Length", 0))
 
-            if file_size > 50 * 1024 * 102
+            if file_size > 50 * 1024 * 1024:
+              raise Exception(
+                  "حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله."
+              )
+
+            vid_data = requests.get(
+                video_url, headers=headers, stream=True, timeout=35
+            ).content
+            downloaded_file = f"downloads/youtube_{chat_id}.mp4"
+            with open(downloaded_file, "wb") as f:
