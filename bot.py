@@ -112,33 +112,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         if status == "stream" or status == "redirect":
           video_url = res.get("url")
           if video_url:
-            # فحص حجم الملف قبل تحميله بالكامل لتجنب مشاكل الحجم
             head_resp = requests.head(video_url, headers=headers, timeout=10)
             file_size = int(head_resp.headers.get("Content-Length", 0))
 
-            # حد تيليجرام للبوتات المجانية هو 50 ميجابايت (52428800 بايت)
-            if file_size > 50 * 1024 * 1024:
-              raise Exception(
-                  "حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله."
-              )
-
-            vid_data = requests.get(
-                video_url, headers=headers, stream=True, timeout=35
-            ).content
-            downloaded_file = f"downloads/youtube_{chat_id}.mp4"
-            with open(downloaded_file, "wb") as f:
-              f.write(vid_data)
-          else:
-            raise Exception("فشل استخراج رابط التحميل المباشر.")
-        else:
-          error_text = res.get("text", "عذراً، يوتيوب يحظر هذا الرابط مؤقتاً.")
-          raise Exception(error_text)
-      else:
-        raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
-
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
-    else:
-      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
-      ydl_opts = {
-          "format": "best[filesize<50M]/best",
-          "
+            if file_size > 50 * 1024 * 102
