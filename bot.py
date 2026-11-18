@@ -2,7 +2,6 @@ import os
 import threading
 import time
 from flask import Flask
-import requests
 import telebot
 import yt_dlp
 
@@ -60,93 +59,31 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
+    output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+    
+    # إعدادات yt-dlp الذكية والمتكاملة لتجاوز حظر تيك توك وباقي المنصات
+    ydl_opts = {
+        "format": "best",
+        "outtmpl": output_template,
+        "max_filesize": 50 * 1024 * 1024,
+        "nocheckcertificate": True,
+        "ignoreerrors": False,
+        "quiet": True,
+        "geo_bypass": True,
+        "extractor_args": {
+            "tiktok": {
+                "webpage_download": [True]
+            }
+        },
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
     }
 
-    # 1. معالجة روابط تيك توك
-    if "tiktok.com" in url or "douyin.com" in url:
-      api_url = f"https://tikwm.com/api/?url={url}&hd=1"
-      response = requests.get(api_url, headers=headers, timeout=15)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+      info = ydl.extract_info(url, download=True)
+      downloaded_file = ydl.prepare_filename(info)
 
-      if response.status_code == 200:
-        res = response.json()
-        if res.get("code") == 0:
-          video_url = res["data"].get("hdplay") or res["data"].get("play")
-          if video_url:
-            vid_data = requests.get(
-                video_url, headers=headers, timeout=25
-            ).content
-            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
-            with open(downloaded_file, "wb") as f:
-              f.write(vid_data)
-          else:
-            raise Exception("لم يتم العثور على رابط الفيديو في الرد.")
-        else:
-          raise Exception("رابط تيك توك غير صالح أو غير موجود.")
-      else:
-        raise Exception(f"خطأ في الاتصال بخدمة تيك توك ({response.status_code})")
-
-    # 2. معالجة روابط يوتيوب عبر واجهة بديلة تتجاوز الحظر تماماً
-    elif "youtube.com" in url or "youtu.be" in url:
-      # استخدام Cobalt API المجاني والمستقر لجلب يوتيوب بدون قيود
-      cobalt_url = "https://co.wuk.sh/api/json"
-      payload = {"url": url, "videoQuality": "720"}
-      api_headers = {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          ),
-      }
-
-      response = requests.post(
-          cobalt_url, json=payload, headers=api_headers, timeout=20
-      )
-
-      if response.status_code == 200:
-        res = response.json()
-        status = res.get("status")
-
-        if status == "stream" or status == "redirect":
-          video_url = res.get("url")
-          if video_url:
-            vid_data = requests.get(
-                video_url, headers=headers, stream=True, timeout=30
-            ).content
-            downloaded_file = f"downloads/youtube_{chat_id}.mp4"
-            with open(downloaded_file, "wb") as f:
-              f.write(vid_data)
-          else:
-            raise Exception("فشل استخراج رابط التحميل المباشر.")
-        else:
-          raise Exception(
-              res.get("text", "عذراً، لم تنجح عملية جلب فيديو يوتيوب.")
-          )
-      else:
-        raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
-
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp المحسن
-    else:
-      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
-      ydl_opts = {
-          "format": "best[filesize<50M]/best",
-          "outtmpl": output_template,
-          "max_filesize": 50 * 1024 * 1024,
-          "nocheckcertificate": True,
-          "ignoreerrors": False,
-          "quiet": True,
-          "geo_bypass": True,
-          "http_headers": headers,
-      }
-      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        downloaded_file = ydl.prepare_filename(info)
-
-    # إرسال الملف بعد التحميل الناجح
     if downloaded_file and os.path.exists(downloaded_file):
       bot.edit_message_text(
           "📤 جاري رفع الملف إليك...",
