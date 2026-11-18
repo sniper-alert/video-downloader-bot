@@ -13,7 +13,7 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render
+# إعداد سيرفر Flask مصغر للحفاظ على نشاط البوت على Render (منع النوم)
 app = Flask("")
 
 
@@ -32,7 +32,7 @@ def run_flask():
 def send_welcome(message):
   bot.reply_to(
       message,
-      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, YouTube, Instagram,"
+      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط من (TikTok, YouTube, Instagram,"
       " X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
   )
 
@@ -41,14 +41,15 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
   url = message.text.strip()
-  print(f"📥 [تتبع] تم استلام رابط من المستخدم {message.chat.id}: {url}")
 
+  # التحقق من أن الرسالة رابط
   if not url.startswith("http"):
     bot.reply_to(message, "الرجاء إرسال رابط صحيح يبدأ بـ http أو https.")
     return
 
-  msg = bot.reply_to(message, "⏳ جاري التحميل، انتظر قليلاً...")
+  msg = bot.reply_to(message, "⏳ جاري تحليل الرابط والتحميل، انتظر قليلاً...")
 
+  # تشغيل التحميل في خيط منفصل (Background Thread) لعدم تجميد البوت
   threading.Thread(
       target=download_and_send, args=(message.chat.id, url, msg.message_id)
   ).start()
@@ -66,7 +67,7 @@ def download_and_send(chat_id, url, processing_msg_id):
         )
     }
 
-    # 1. معالجة روابط تيك توك عبر tikwm (لضمان عملها 100% بدون حظر)
+    # 1. معالجة روابط تيك توك
     if "tiktok.com" in url or "douyin.com" in url:
       api_url = f"https://tikwm.com/api/?url={url}&hd=1"
       response = requests.get(api_url, headers=headers, timeout=15)
@@ -83,15 +84,16 @@ def download_and_send(chat_id, url, processing_msg_id):
             with open(downloaded_file, "wb") as f:
               f.write(vid_data)
           else:
-            raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
+            raise Exception("لم يتم العثور على رابط الفيديو في الرد.")
         else:
           raise Exception("رابط تيك توك غير صالح أو غير موجود.")
       else:
-        raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
+        raise Exception(f"خطأ في الاتصال بخدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة روابط يوتيوب عبر واجهة Cobalt API الحديثة
+    # 2. معالجة روابط يوتيوب عبر واجهة بديلة تتجاوز الحظر تماماً
     elif "youtube.com" in url or "youtu.be" in url:
-      api_endpoint = "https://api.cobalt.tools/api/json"
+      # استخدام Cobalt API المجاني والمستقر لجلب يوتيوب بدون قيود
+      cobalt_url = "https://co.wuk.sh/api/json"
       payload = {"url": url, "videoQuality": "720"}
       api_headers = {
           "Accept": "application/json",
@@ -102,7 +104,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       }
 
       response = requests.post(
-          api_endpoint, json=payload, headers=api_headers, timeout=25
+          cobalt_url, json=payload, headers=api_headers, timeout=20
       )
 
       if response.status_code == 200:
@@ -112,16 +114,8 @@ def download_and_send(chat_id, url, processing_msg_id):
         if status == "stream" or status == "redirect":
           video_url = res.get("url")
           if video_url:
-            head_resp = requests.head(video_url, headers=headers, timeout=10)
-            file_size = int(head_resp.headers.get("Content-Length", 0))
-
-            if file_size > 50 * 1024 * 1024:
-              raise Exception(
-                  "حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله."
-              )
-
             vid_data = requests.get(
-                video_url, headers=headers, stream=True, timeout=35
+                video_url, headers=headers, stream=True, timeout=30
             ).content
             downloaded_file = f"downloads/youtube_{chat_id}.mp4"
             with open(downloaded_file, "wb") as f:
@@ -129,12 +123,13 @@ def download_and_send(chat_id, url, processing_msg_id):
           else:
             raise Exception("فشل استخراج رابط التحميل المباشر.")
         else:
-          error_text = res.get("text", "عذراً، يوتيوب يحظر هذا الرابط مؤقتاً.")
-          raise Exception(error_text)
+          raise Exception(
+              res.get("text", "عذراً، لم تنجح عملية جلب فيديو يوتيوب.")
+          )
       else:
         raise Exception(f"خطأ في الاتصال بخدمة يوتيوب ({response.status_code})")
 
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
+    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp المحسن
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
@@ -160,7 +155,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       )
 
       with open(downloaded_file, "rb") as f:
-        if downloaded_file.endswith((".mp3", ".m4a", ".wav", ".aac")):
+        if downloaded_file.endswith((".mp3", ".m4a", ".wav")):
           bot.send_audio(chat_id, f)
         else:
           bot.send_video(chat_id, f, supports_streaming=True)
@@ -180,7 +175,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.edit_message_text(
           error_msg, chat_id=chat_id, message_id=processing_msg_id
       )
-    except Exception:
+    except:
       bot.send_message(chat_id, error_msg)
 
   finally:
@@ -196,14 +191,11 @@ if __name__ == "__main__":
   flask_thread = threading.Thread(target=run_flask)
   flask_thread.daemon = True
   flask_thread.start()
-  print("Flask server started successfully and port is bound.")
-
-  time.sleep(2)
+  print("Flask server started successfully.")
 
   try:
     bot.remove_webhook()
-    bot.delete_webhook(drop_pending_updates=True)
-    print("Webhook cleaned successfully!")
+    time.sleep(1)
   except Exception as e:
     print(f"Webhook remove error: {e}")
 
