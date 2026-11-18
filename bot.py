@@ -101,29 +101,28 @@ def process_download(chat_id, url, action, processing_msg_id):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
 
-        # معالجة خاصة لروابط تيك توك عبر TikWM لتجاوز حظر الـ IP نهائياً
+        # 1. معالجة روابط تيك توك بالطريقة المستقرة عبر TikWM مع مهلة اتصال واسعة
         if "tiktok.com" in url or "douyin.com" in url:
             api_url = f"https://tikwm.com/api/?url={url}&hd=1"
-            response = requests.get(api_url, headers=headers, timeout=15)
+            response = requests.get(api_url, headers=headers, timeout=30)
 
             if response.status_code == 200:
                 res = response.json()
                 if res.get("code") == 0:
                     data_info = res.get("data", {})
                     
-                    # اختيار الرابط حسب طلب المستخدم (فيديو عالي، متوسط، أو صوت)
                     if action == "mp3":
-                        media_url = data_info.get("music")
+                        video_url = data_info.get("music")
                         ext = "mp3"
                     else:
-                        media_url = data_info.get("hdplay") or data_info.get("play")
+                        video_url = data_info.get("hdplay") or data_info.get("play")
                         ext = "mp4"
 
-                    if media_url:
-                        media_data = requests.get(media_url, headers=headers, timeout=30).content
+                    if video_url:
+                        vid_data = requests.get(video_url, headers=headers, timeout=40).content
                         downloaded_file = f"downloads/tiktok_{chat_id}.{ext}"
                         with open(downloaded_file, "wb") as f:
-                            f.write(media_data)
+                            f.write(vid_data)
                     else:
                         raise Exception("لم يتم العثور على رابط الوسائط في تيك توك.")
                 else:
@@ -131,7 +130,7 @@ def process_download(chat_id, url, action, processing_msg_id):
             else:
                 raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-        # معالجة باقي المنصات (إنستغرام، إكس) عبر yt-dlp
+        # 2. معالجة باقي المنصات (إنستغرام، إكس) عبر yt-dlp
         else:
             output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
             ydl_opts = {
@@ -219,7 +218,7 @@ if __name__ == "__main__":
         print(f"Webhook remove error: {e}")
 
     print("Bot is starting polling...")
-    while Time_true := True:
+    while True:
         try:
             bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
         except Exception as e:
