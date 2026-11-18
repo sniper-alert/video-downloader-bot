@@ -32,8 +32,8 @@ def run_flask():
 def send_welcome(message):
   bot.reply_to(
       message,
-      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (YouTube, TikTok, Instagram,"
-      " X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
+      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, Instagram, X/Twitter)"
+      " وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
   )
 
 
@@ -89,7 +89,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       else:
         raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-    # 2. معالجة يوتيوب وباقي المنصات عبر yt-dlp مع تفعيل عميل الأندرويد لتجاوز الحظر
+    # 2. معالجة باقي المنصات (إنستغرام، إكس، يوتيوب عبر yt-dlp)
     else:
       output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
       ydl_opts = {
@@ -136,10 +136,17 @@ def download_and_send(chat_id, url, processing_msg_id):
   except Exception as e:
     print(f"Error details: {e}")
     error_str = str(e)
-    if "429" in error_str or "Sign in" in error_str:
+    if (
+        "429" in error_str
+        or "Sign in" in error_str
+        or "private" in error_str
+        or "youtube" in url.lower()
+        or "youtu.be" in url.lower()
+    ):
       error_msg = (
-          "❌ يوتيوب يحظر عنوان السيرفر مؤقتاً (Rate Limit). جرب لاحقاً أو استخدم"
-          " منصة أخرى."
+          "❌ عذراً يا سِنآل، يوتيوب يحظر عناوين خوادم الاستضافة المجانية"
+          " (Render).\n\n✅ منصات تيك توك، إنستغرام، وتويتر/إكس تعمل لديك بنسبة"
+          " 100%!"
       )
     else:
       error_msg = f"❌ تعذر التحميل: {error_str[:70]}"
