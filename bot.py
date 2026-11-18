@@ -55,7 +55,6 @@ def handle_link(message):
     # بناء أزرار خيارات التحميل
     markup = InlineKeyboardMarkup()
     markup.row_width = 2
-    # نمرر الرابط مخفياً داخل البيانات (callback_data)
     markup.add(
         InlineKeyboardButton("🎥 فيديو عالي", callback_data=f"dl_hd_{url}"),
         InlineKeyboardButton("🎥 فيديو متوسط", callback_data=f"dl_sd_{url}"),
@@ -102,36 +101,66 @@ def process_download(chat_id, url, action, processing_msg_id):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
 
-        output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+        # معالجة خاصة لروابط تيك توك عبر TikWM لتجاوز حظر الـ IP نهائياً
+        if "tiktok.com" in url or "douyin.com" in url:
+            api_url = f"https://tikwm.com/api/?url={url}&hd=1"
+            response = requests.get(api_url, headers=headers, timeout=15)
 
-        # ضبط إعدادات yt-dlp بناءً على اختيار المستخدم
-        ydl_opts = {
-            "outtmpl": output_template,
-            "max_filesize": 50 * 1024 * 1024,
-            "nocheckcertificate": True,
-            "ignoreerrors": False,
-            "quiet": True,
-            "geo_bypass": True,
-            "http_headers": headers,
-        }
+            if response.status_code == 200:
+                res = response.json()
+                if res.get("code") == 0:
+                    data_info = res.get("data", {})
+                    
+                    # اختيار الرابط حسب طلب المستخدم (فيديو عالي، متوسط، أو صوت)
+                    if action == "mp3":
+                        media_url = data_info.get("music")
+                        ext = "mp3"
+                    else:
+                        media_url = data_info.get("hdplay") or data_info.get("play")
+                        ext = "mp4"
 
-        if action == "hd":
-            ydl_opts["format"] = "bestvideo[filesize<50M]+bestaudio/best[filesize<50M]/best"
-        elif action == "sd":
-            ydl_opts["format"] = "best[height<=360][filesize<50M]/best[filesize<50M]/best"
-        elif action == "mp3":
-            ydl_opts["format"] = "bestaudio/best"
-            ydl_opts["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
+                    if media_url:
+                        media_data = requests.get(media_url, headers=headers, timeout=30).content
+                        downloaded_file = f"downloads/tiktok_{chat_id}.{ext}"
+                        with open(downloaded_file, "wb") as f:
+                            f.write(media_data)
+                    else:
+                        raise Exception("لم يتم العثور على رابط الوسائط في تيك توك.")
+                else:
+                    raise Exception("رابط تيك توك غير صالح أو غير موجود.")
+            else:
+                raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            downloaded_file = ydl.prepare_filename(info)
-            if action == "mp3":
-                downloaded_file = os.path.splitext(downloaded_file)[0] + ".mp3"
+        # معالجة باقي المنصات (إنستغرام، إكس) عبر yt-dlp
+        else:
+            output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+            ydl_opts = {
+                "outtmpl": output_template,
+                "max_filesize": 50 * 1024 * 1024,
+                "nocheckcertificate": True,
+                "ignoreerrors": False,
+                "quiet": True,
+                "geo_bypass": True,
+                "http_headers": headers,
+            }
+
+            if action == "hd":
+                ydl_opts["format"] = "bestvideo[filesize<50M]+bestaudio/best[filesize<50M]/best"
+            elif action == "sd":
+                ydl_opts["format"] = "best[height<=360][filesize<50M]/best[filesize<50M]/best"
+            elif action == "mp3":
+                ydl_opts["format"] = "bestaudio/best"
+                ydl_opts["postprocessors"] = [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }]
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                if action == "mp3" and not downloaded_file.endswith(".mp3"):
+                    downloaded_file = os.path.splitext(downloaded_file)[0] + ".mp3"
 
         # إرسال الملف بعد التحميل الناجح
         if downloaded_file and os.path.exists(downloaded_file):
@@ -142,7 +171,7 @@ def process_download(chat_id, url, action, processing_msg_id):
             )
 
             with open(downloaded_file, "rb") as f:
-                if action == "mp3":
+                if downloaded_file.endswith((".mp3", ".m4a", ".wav", ".aac")):
                     bot.send_audio(chat_id, f)
                 else:
                     bot.send_video(chat_id, f, supports_streaming=True)
@@ -190,7 +219,7 @@ if __name__ == "__main__":
         print(f"Webhook remove error: {e}")
 
     print("Bot is starting polling...")
-    while True:
+    while Time_true := True:
         try:
             bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
         except Exception as e:
