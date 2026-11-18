@@ -58,8 +58,8 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    # استخدام Cobalt API السريعة والمستقرة لجميع المنصات (يوتيوب، تيك توك، إلخ)
-    api_url = "https://api.cobalt.tools/api/json"
+    # استخدام الخادم النشط والمستقر لخدمة التحميل
+    api_url = "https://co.wuk.sh/"
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -67,7 +67,7 @@ def download_and_send(chat_id, url, processing_msg_id):
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         ),
     }
-    payload = {"url": url, "vQuality": "720"}
+    payload = {"url": url, "videoQuality": "720"}
 
     response = requests.post(
         api_url, json=payload, headers=headers, timeout=25
@@ -83,10 +83,9 @@ def download_and_send(chat_id, url, processing_msg_id):
     if status in ["redirect", "tunnel"]:
       download_url = res.get("url")
     elif status == "picker":
-      # إذا كان الرابط يحتوي على عدة خيارات، نأخذ الخيار الأول
       pickers = res.get("picker", [])
       if pickers:
-        download_url = pickers.get("url")
+        download_url = pickers[0].get("url")
 
     if not download_url:
       raise Exception("عذراً، لم نتمكن من استخراج رابط التحميل لهذا الفيديو.")
