@@ -4,6 +4,7 @@ import time
 from flask import Flask
 import requests
 import telebot
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 import yt_dlp
 
 # جلب توكن البوت من متغيرات البيئة بأمان
@@ -32,11 +33,11 @@ def run_flask():
 def send_welcome(message):
     bot.reply_to(
         message,
-        "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, Instagram, X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
+        "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, Instagram, X/Twitter) وسأعرض لك خيارات التحميل المناسبة.",
     )
 
 
-# استقبال الروابط ومعالجتها
+# استقبال الروابط وإظهار الأزرار التفاعلية
 @bot.message_handler(func=lambda message: True)
 def handle_link(message):
     url = message.text.strip()
@@ -51,14 +52,48 @@ def handle_link(message):
         bot.reply_to(message, "⚠️ اليوتيوب غير مفعل الآن .. سيفعل مستقبلاً.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري التحميل، انتظر قليلاً...")
+    # بناء أزرار خيارات التحميل
+    markup = InlineKeyboardMarkup()
+    markup.row_width = 2
+    # نمرر الرابط مخفياً داخل البيانات (callback_data)
+    markup.add(
+        InlineKeyboardButton("🎥 فيديو عالي", callback_data=f"dl_hd_{url}"),
+        InlineKeyboardButton("🎥 فيديو متوسط", callback_data=f"dl_sd_{url}"),
+        InlineKeyboardButton("🎵 تحويل صوت MP3", callback_data=f"dl_mp3_{url}"),
+    )
+
+    bot.reply_to(
+        message,
+        "🎬 اختر طريقة التحميل المطلوبة:",
+        reply_markup=markup,
+    )
+
+
+# معالجة الضغط على الأزرار
+@bot.callback_query_handler(func=lambda call: call.data.startswith("dl_"))
+def callback_query(call):
+    data_parts = call.data.split("_", 2)
+    if len(data_parts) < 3:
+        return
+
+    action = data_parts[1]  # hd, sd, أو mp3
+    url = data_parts[2]
+    chat_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    # تعديل رسالة الأزرار لإعلام المستخدم ببدء العمل
+    bot.edit_message_text(
+        "⏳ جاري تجهيز الطلب، انتظر قليلاً...",
+        chat_id=chat_id,
+        message_id=message_id,
+    )
 
     threading.Thread(
-        target=download_and_send, args=(message.chat.id, url, msg.message_id)
+        target=process_download, args=(chat_id, url, action, message_id)
     ).start()
 
 
-def download_and_send(chat_id, url, processing_msg_id):
+def process_download(chat_id, url, action, processing_msg_id):
     os.makedirs("downloads", exist_ok=True)
     downloaded_file = None
 
@@ -67,10 +102,10 @@ def download_and_send(chat_id, url, processing_msg_id):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
 
-        # معالجة باقي المنصات (تيك توك، إنستغرام، إكس) عبر yt-dlp
         output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+
+        # ضبط إعدادات yt-dlp بناءً على اختيار المستخدم
         ydl_opts = {
-            "format": "best[filesize<50M]/best",
             "outtmpl": output_template,
             "max_filesize": 50 * 1024 * 1024,
             "nocheckcertificate": True,
@@ -79,9 +114,24 @@ def download_and_send(chat_id, url, processing_msg_id):
             "geo_bypass": True,
             "http_headers": headers,
         }
+
+        if action == "hd":
+            ydl_opts["format"] = "bestvideo[filesize<50M]+bestaudio/best[filesize<50M]/best"
+        elif action == "sd":
+            ydl_opts["format"] = "best[height<=360][filesize<50M]/best[filesize<50M]/best"
+        elif action == "mp3":
+            ydl_opts["format"] = "bestaudio/best"
+            ydl_opts["postprocessors"] = [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }]
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
+            if action == "mp3":
+                downloaded_file = os.path.splitext(downloaded_file)[0] + ".mp3"
 
         # إرسال الملف بعد التحميل الناجح
         if downloaded_file and os.path.exists(downloaded_file):
@@ -92,7 +142,7 @@ def download_and_send(chat_id, url, processing_msg_id):
             )
 
             with open(downloaded_file, "rb") as f:
-                if downloaded_file.endswith((".mp3", ".m4a", ".wav", ".aac")):
+                if action == "mp3":
                     bot.send_audio(chat_id, f)
                 else:
                     bot.send_video(chat_id, f, supports_streaming=True)
