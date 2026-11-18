@@ -1,11 +1,9 @@
 import os
-import re
 import threading
 import time
 from flask import Flask
 import requests
 import telebot
-import yt_dlp
 
 # جلب توكن البوت من متغيرات البيئة بأمان
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -33,7 +31,7 @@ def run_flask():
 def send_welcome(message):
   bot.reply_to(
       message,
-      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (TikTok, YouTube, Instagram,"
+      "أهلاً بك يا سِنآل! 🤖\n\nأرسل لي أي رابط (YouTube, TikTok, Instagram,"
       " X/Twitter) وسأقوم بتحميله وإرساله لك فوراً بجودة عالية.",
   )
 
@@ -60,112 +58,56 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
+    # استخدام Cobalt API السريعة والمستقرة لجميع المنصات (يوتيوب، تيك توك، إلخ)
+    api_url = "https://api.cobalt.tools/api/json"
     headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
+        ),
     }
+    payload = {"url": url, "vQuality": "720"}
 
-    # 1. معالجة روابط تيك توك عبر tikwm (سريعة ومستقرة)
-    if "tiktok.com" in url or "douyin.com" in url:
-      api_url = f"https://tikwm.com/api/?url={url}&hd=1"
-      response = requests.get(api_url, headers=headers, timeout=15)
+    response = requests.post(
+        api_url, json=payload, headers=headers, timeout=25
+    )
 
-      if response.status_code == 200:
-        res = response.json()
-        if res.get("code") == 0:
-          video_url = res["data"].get("hdplay") or res["data"].get("play")
-          if video_url:
-            vid_data = requests.get(
-                video_url, headers=headers, timeout=25
-            ).content
-            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
-            with open(downloaded_file, "wb") as f:
-              f.write(vid_data)
-          else:
-            raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
-        else:
-          raise Exception("رابط تيك توك غير صالح أو غير موجود.")
-      else:
-        raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
+    if response.status_code != 200:
+      raise Exception(f"خطأ في الاتصال بخدمة التحميل ({response.status_code})")
 
-    # 2. معالجة روابط يوتيوب عبر Invidious API لتجاوز حظر 429 وصعوبات السيرفر
-    elif "youtube.com" in url or "youtu.be" in url:
-      video_id = None
-      patterns = [
-          r"(?:v=|\/)([0-9A-Za-z_-]{11}).*",
-          r"(?:embed\/)([0-9A-Za-z_-]{11})",
-          r"(?:youtu\.be\/)([0-9A-Za-z_-]{11})",
-      ]
-      for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-          video_id = match.group(1)
-          break
+    res = response.json()
+    status = res.get("status")
 
-      if not video_id:
-        raise Exception("رابط يوتيوب غير صالح.")
+    download_url = None
+    if status in ["redirect", "tunnel"]:
+      download_url = res.get("url")
+    elif status == "picker":
+      # إذا كان الرابط يحتوي على عدة خيارات، نأخذ الخيار الأول
+      pickers = res.get("picker", [])
+      if pickers:
+        download_url = pickers.get("url")
 
-      # قائمة بالخوادم البديلة الموثوقة لجلب تفاصيل يوتيوب
-      instances = [
-          "https://vid.puffyan.us",
-          "https://invidious.fdn.fr",
-          "https://inv.nadeko.net",
-          "https://invidious.privacyredirect.com",
-      ]
+    if not download_url:
+      raise Exception("عذراً، لم نتمكن من استخراج رابط التحميل لهذا الفيديو.")
 
-      stream_url = None
-      for instance in instances:
-        try:
-          api_url = f"{instance}/api/v1/videos/{video_id}"
-          resp = requests.get(api_url, headers=headers, timeout=10)
-          if resp.status_code == 200:
-            data = resp.json()
-            format_streams = data.get("formatStreams", [])
-            for stream in format_streams:
-              if stream.get("container") == "mp4" and stream.get("url"):
-                stream_url = stream.get("url")
-                break
-            if not stream_url and format_streams:
-              stream_url = format_streams[0].get("url")  # تم التصحيح هنا
-            if stream_url:
-              break
-        except Exception:
-          continue
+    # تحميل الملف الفعلي
+    vid_response = requests.get(
+        download_url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=45
+    )
+    if vid_response.status_code != 200:
+      raise Exception("فشل تحميل الملف من المصدر.")
 
-      if not stream_url:
-        raise Exception("عذراً، يوتيوب يحظر هذا الرابط مؤقتاً أو الخوادم مزدحمة.")
+    # فحص الحجم (تجنب تجاوز 50 ميجابايت لتيليجرام)
+    file_size = int(vid_response.headers.get("Content-Length", 0))
+    if file_size > 50 * 1024 * 1024:
+      raise Exception("حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله.")
 
-      # فحص حجم الفيديو قبل التحميل لتجنب تجاوز حد 50 ميجابايت
-      head_resp = requests.head(stream_url, headers=headers, timeout=10)
-      file_size = int(head_resp.headers.get("Content-Length", 0))
-      if file_size > 50 * 1024 * 1024:
-        raise Exception("حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله.")
-
-      vid_data = requests.get(
-          stream_url, headers=headers, stream=True, timeout=35
-      ).content
-      downloaded_file = f"downloads/youtube_{chat_id}.mp4"
-      with open(downloaded_file, "wb") as f:
-        f.write(vid_data)
-
-    # 3. باقي المنصات (إنستغرام، إكس) عبر yt-dlp مع التحقق من الحجم
-    else:
-      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
-      ydl_opts = {
-          "format": "best[filesize<50M]/best",
-          "outtmpl": output_template,
-          "max_filesize": 50 * 1024 * 1024,
-          "nocheckcertificate": True,
-          "ignoreerrors": False,
-          "quiet": True,
-          "geo_bypass": True,
-          "http_headers": headers,
-      }
-      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        downloaded_file = ydl.prepare_filename(info)
+    downloaded_file = f"downloads/media_{chat_id}.mp4"
+    with open(downloaded_file, "wb") as f:
+      for chunk in vid_response.iter_content(chunk_size=8192):
+        if chunk:
+          f.write(chunk)
 
     # إرسال الملف بعد التحميل الناجح
     if downloaded_file and os.path.exists(downloaded_file):
@@ -184,7 +126,7 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.delete_message(chat_id, processing_msg_id)
     else:
       bot.edit_message_text(
-          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل.",
+          "❌ عذراً، لم أتمكن من حفظ الملف.",
           chat_id=chat_id,
           message_id=processing_msg_id,
       )
