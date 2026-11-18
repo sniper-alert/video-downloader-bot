@@ -128,7 +128,7 @@ def download_and_send(chat_id, url, processing_msg_id):
                 stream_url = stream.get("url")
                 break
             if not stream_url and format_streams:
-              stream_url = format_streams.get("url")
+              stream_url = format_streams[0].get("url")  # تم التصحيح هنا
             if stream_url:
               break
         except Exception:
