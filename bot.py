@@ -4,6 +4,7 @@ import time
 from flask import Flask
 import requests
 import telebot
+import yt_dlp
 
 # جلب توكن البوت من متغيرات البيئة بأمان
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -58,55 +59,57 @@ def download_and_send(chat_id, url, processing_msg_id):
   downloaded_file = None
 
   try:
-    # استخدام الخادم النشط والمستقر لخدمة التحميل
-    api_url = "https://co.wuk.sh/"
     headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        ),
+            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
     }
-    payload = {"url": url, "videoQuality": "720"}
 
-    response = requests.post(
-        api_url, json=payload, headers=headers, timeout=25
-    )
+    # 1. معالجة روابط تيك توك عبر tikwm (سريعة ومستقرة 100%)
+    if "tiktok.com" in url or "douyin.com" in url:
+      api_url = f"https://tikwm.com/api/?url={url}&hd=1"
+      response = requests.get(api_url, headers=headers, timeout=15)
 
-    if response.status_code != 200:
-      raise Exception(f"خطأ في الاتصال بخدمة التحميل ({response.status_code})")
+      if response.status_code == 200:
+        res = response.json()
+        if res.get("code") == 0:
+          video_url = res["data"].get("hdplay") or res["data"].get("play")
+          if video_url:
+            vid_data = requests.get(
+                video_url, headers=headers, timeout=25
+            ).content
+            downloaded_file = f"downloads/tiktok_{chat_id}.mp4"
+            with open(downloaded_file, "wb") as f:
+              f.write(vid_data)
+          else:
+            raise Exception("لم يتم العثور على رابط الفيديو في تيك توك.")
+        else:
+          raise Exception("رابط تيك توك غير صالح أو غير موجود.")
+      else:
+        raise Exception(f"خطأ في خدمة تيك توك ({response.status_code})")
 
-    res = response.json()
-    status = res.get("status")
-
-    download_url = None
-    if status in ["redirect", "tunnel"]:
-      download_url = res.get("url")
-    elif status == "picker":
-      pickers = res.get("picker", [])
-      if pickers:
-        download_url = pickers[0].get("url")
-
-    if not download_url:
-      raise Exception("عذراً، لم نتمكن من استخراج رابط التحميل لهذا الفيديو.")
-
-    # تحميل الملف الفعلي
-    vid_response = requests.get(
-        download_url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=45
-    )
-    if vid_response.status_code != 200:
-      raise Exception("فشل تحميل الملف من المصدر.")
-
-    # فحص الحجم (تجنب تجاوز 50 ميجابايت لتيليجرام)
-    file_size = int(vid_response.headers.get("Content-Length", 0))
-    if file_size > 50 * 1024 * 1024:
-      raise Exception("حجم الفيديو أكبر من 50 ميجابايت، عذراً لا يمكن إرساله.")
-
-    downloaded_file = f"downloads/media_{chat_id}.mp4"
-    with open(downloaded_file, "wb") as f:
-      for chunk in vid_response.iter_content(chunk_size=8192):
-        if chunk:
-          f.write(chunk)
+    # 2. معالجة يوتيوب وباقي المنصات عبر yt-dlp مع تفعيل عميل الأندرويد لتجاوز الحظر
+    else:
+      output_template = f"downloads/file_{chat_id}_%(id)s.%(ext)s"
+      ydl_opts = {
+          "format": "best[filesize<50M]/best",
+          "outtmpl": output_template,
+          "max_filesize": 50 * 1024 * 1024,
+          "nocheckcertificate": True,
+          "ignoreerrors": False,
+          "quiet": True,
+          "geo_bypass": True,
+          "http_headers": headers,
+          "extractor_args": {
+              "youtube": {
+                  "player_client": ["android", "web"],
+              }
+          },
+      }
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        downloaded_file = ydl.prepare_filename(info)
 
     # إرسال الملف بعد التحميل الناجح
     if downloaded_file and os.path.exists(downloaded_file):
@@ -125,14 +128,22 @@ def download_and_send(chat_id, url, processing_msg_id):
       bot.delete_message(chat_id, processing_msg_id)
     else:
       bot.edit_message_text(
-          "❌ عذراً، لم أتمكن من حفظ الملف.",
+          "❌ عذراً، لم أتمكن من العثور على ملف قابل للتحميل.",
           chat_id=chat_id,
           message_id=processing_msg_id,
       )
 
   except Exception as e:
     print(f"Error details: {e}")
-    error_msg = f"❌ تعذر التحميل: {str(e)[:70]}"
+    error_str = str(e)
+    if "429" in error_str or "Sign in" in error_str:
+      error_msg = (
+          "❌ يوتيوب يحظر عنوان السيرفر مؤقتاً (Rate Limit). جرب لاحقاً أو استخدم"
+          " منصة أخرى."
+      )
+    else:
+      error_msg = f"❌ تعذر التحميل: {error_str[:70]}"
+
     try:
       bot.edit_message_text(
           error_msg, chat_id=chat_id, message_id=processing_msg_id
